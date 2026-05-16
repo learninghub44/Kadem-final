@@ -1,9 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const supabase = require('../config/supabase');
-const { authenticate, requireActive } = require('../middleware/auth');
+const supabase = require('./supabase');
+const { authenticate, requireActive } = require('./auth');
 
-// GET /api/tasks — get all active tasks
 router.get('/', authenticate, requireActive, async (req, res) => {
   try {
     const { data: tasks, error } = await supabase
@@ -11,10 +10,8 @@ router.get('/', authenticate, requireActive, async (req, res) => {
       .select('*')
       .eq('is_active', true)
       .order('created_at', { ascending: false });
-
     if (error) throw error;
 
-    // Get user's submissions for these tasks
     const taskIds = tasks.map(t => t.id);
     const { data: submissions } = await supabase
       .from('task_submissions')
@@ -36,7 +33,6 @@ router.get('/', authenticate, requireActive, async (req, res) => {
   }
 });
 
-// POST /api/tasks/:taskId/submit — submit screenshot
 router.post('/:taskId/submit', authenticate, requireActive, async (req, res) => {
   try {
     const { taskId } = req.params;
@@ -47,18 +43,15 @@ router.post('/:taskId/submit', authenticate, requireActive, async (req, res) => 
     }
     if (views_count < 1) return res.status(400).json({ error: 'Views count must be at least 1' });
 
-    // Check task exists
     const { data: task } = await supabase.from('tasks').select('*').eq('id', taskId).single();
     if (!task) return res.status(404).json({ error: 'Task not found' });
 
-    // Check not already submitted
     const { data: existing } = await supabase
       .from('task_submissions')
       .select('id')
       .eq('user_id', req.user.id)
       .eq('task_id', taskId)
       .maybeSingle();
-
     if (existing) return res.status(409).json({ error: 'Already submitted for this task' });
 
     const MULTIPLIERS = { none: 1, starter: 1, bronze: 1.5, silver: 2, gold: 3 };
@@ -77,7 +70,6 @@ router.post('/:taskId/submit', authenticate, requireActive, async (req, res) => 
       })
       .select('*')
       .single();
-
     if (error) throw error;
 
     res.status(201).json({
@@ -91,7 +83,6 @@ router.post('/:taskId/submit', authenticate, requireActive, async (req, res) => 
   }
 });
 
-// GET /api/tasks/my-submissions
 router.get('/my-submissions', authenticate, async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -99,7 +90,6 @@ router.get('/my-submissions', authenticate, async (req, res) => {
       .select('*, tasks(title, image_url)')
       .eq('user_id', req.user.id)
       .order('submitted_at', { ascending: false });
-
     if (error) throw error;
     res.json({ submissions: data });
   } catch (err) {
