@@ -1,12 +1,11 @@
 const express = require('express');
 const router = express.Router();
-const supabase = require('../config/supabase');
-const { authenticate, requireAdmin } = require('../middleware/auth');
-const { initiateWithdrawal } = require('../config/payhero');
+const supabase = require('./supabase');
+const { authenticate, requireAdmin } = require('./auth');
+const { initiateWithdrawal } = require('./payhero');
 
 router.use(authenticate, requireAdmin);
 
-// GET /api/admin/dashboard — stats overview
 router.get('/dashboard', async (req, res) => {
   try {
     const [users, tasks, submissions, withdrawals, transactions] = await Promise.all([
@@ -29,7 +28,6 @@ router.get('/dashboard', async (req, res) => {
   }
 });
 
-// GET /api/admin/users
 router.get('/users', async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -43,7 +41,6 @@ router.get('/users', async (req, res) => {
   }
 });
 
-// PATCH /api/admin/users/:id — update status, wallet, etc.
 router.patch('/users/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -62,7 +59,6 @@ router.patch('/users/:id', async (req, res) => {
   }
 });
 
-// GET /api/admin/tasks
 router.get('/tasks', async (req, res) => {
   try {
     const { data, error } = await supabase.from('tasks').select('*').order('created_at', { ascending: false });
@@ -73,7 +69,6 @@ router.get('/tasks', async (req, res) => {
   }
 });
 
-// POST /api/admin/tasks — create task
 router.post('/tasks', async (req, res) => {
   try {
     const { title, description, image_url } = req.body;
@@ -86,7 +81,6 @@ router.post('/tasks', async (req, res) => {
   }
 });
 
-// PATCH /api/admin/tasks/:id
 router.patch('/tasks/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -99,7 +93,6 @@ router.patch('/tasks/:id', async (req, res) => {
   }
 });
 
-// DELETE /api/admin/tasks/:id
 router.delete('/tasks/:id', async (req, res) => {
   try {
     await supabase.from('tasks').delete().eq('id', req.params.id);
@@ -109,7 +102,6 @@ router.delete('/tasks/:id', async (req, res) => {
   }
 });
 
-// GET /api/admin/submissions
 router.get('/submissions', async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -123,7 +115,6 @@ router.get('/submissions', async (req, res) => {
   }
 });
 
-// PATCH /api/admin/submissions/:id — approve or reject
 router.patch('/submissions/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -147,7 +138,7 @@ router.patch('/submissions/:id', async (req, res) => {
         type: 'earning',
         amount: submission.earning_amount,
         status: 'completed',
-        description: `Task earning approved`,
+        description: 'Task earning approved',
       });
     }
 
@@ -157,7 +148,6 @@ router.patch('/submissions/:id', async (req, res) => {
   }
 });
 
-// GET /api/admin/withdrawals
 router.get('/withdrawals', async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -171,11 +161,10 @@ router.get('/withdrawals', async (req, res) => {
   }
 });
 
-// PATCH /api/admin/withdrawals/:id — approve and pay via PayHero
 router.patch('/withdrawals/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { action, admin_note } = req.body; // action: 'approve' | 'reject'
+    const { action, admin_note } = req.body;
 
     const { data: withdrawal } = await supabase.from('withdrawals').select('*, users(*)').eq('id', id).single();
     if (!withdrawal) return res.status(404).json({ error: 'Withdrawal not found' });
@@ -187,7 +176,6 @@ router.patch('/withdrawals/:id', async (req, res) => {
       await supabase.from('transactions').update({ status: 'completed' }).eq('user_id', withdrawal.user_id).eq('type', 'withdrawal').eq('status', 'pending');
       res.json({ message: 'Withdrawal approved and M-Pesa payout initiated' });
     } else if (action === 'reject') {
-      // Refund wallet
       await supabase.from('users').update({ wallet_balance: withdrawal.users.wallet_balance + withdrawal.amount }).eq('id', withdrawal.user_id);
       await supabase.from('withdrawals').update({ status: 'rejected', admin_note, processed_at: new Date().toISOString() }).eq('id', id);
       res.json({ message: 'Withdrawal rejected. Amount refunded to wallet.' });
@@ -200,7 +188,6 @@ router.patch('/withdrawals/:id', async (req, res) => {
   }
 });
 
-// GET /api/admin/transactions
 router.get('/transactions', async (req, res) => {
   try {
     const { data, error } = await supabase
