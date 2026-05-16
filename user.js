@@ -1,11 +1,10 @@
 const express = require('express');
 const router = express.Router();
-const supabase = require('../config/supabase');
-const { authenticate } = require('../middleware/auth');
+const supabase = require('./supabase');
+const { authenticate } = require('./auth');
 
 router.use(authenticate);
 
-// GET /api/user/wallet — wallet balance + transaction history
 router.get('/wallet', async (req, res) => {
   try {
     const { data: transactions, error } = await supabase
@@ -14,19 +13,13 @@ router.get('/wallet', async (req, res) => {
       .eq('user_id', req.user.id)
       .order('created_at', { ascending: false })
       .limit(50);
-
     if (error) throw error;
-
-    res.json({
-      wallet_balance: req.user.wallet_balance,
-      transactions,
-    });
+    res.json({ wallet_balance: req.user.wallet_balance, transactions });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch wallet' });
   }
 });
 
-// GET /api/user/referrals
 router.get('/referrals', async (req, res) => {
   try {
     const { data: referrals, error } = await supabase
@@ -34,7 +27,6 @@ router.get('/referrals', async (req, res) => {
       .select('id, full_name, status, package_level, created_at')
       .eq('referred_by', req.user.referral_code)
       .order('created_at', { ascending: false });
-
     if (error) throw error;
 
     const { data: earnings } = await supabase
@@ -44,19 +36,12 @@ router.get('/referrals', async (req, res) => {
       .order('created_at', { ascending: false });
 
     const totalEarned = (earnings || []).reduce((a, b) => a + Number(b.amount), 0);
-
-    res.json({
-      referral_code: req.user.referral_code,
-      referrals,
-      earnings,
-      total_earned: totalEarned,
-    });
+    res.json({ referral_code: req.user.referral_code, referrals, earnings, total_earned: totalEarned });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch referrals' });
   }
 });
 
-// GET /api/user/withdrawals
 router.get('/withdrawals', async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -64,7 +49,6 @@ router.get('/withdrawals', async (req, res) => {
       .select('*')
       .eq('user_id', req.user.id)
       .order('requested_at', { ascending: false });
-
     if (error) throw error;
     res.json({ withdrawals: data });
   } catch (err) {
@@ -72,12 +56,10 @@ router.get('/withdrawals', async (req, res) => {
   }
 });
 
-// GET /api/user/profile
 router.get('/profile', (req, res) => {
   res.json({ user: req.user });
 });
 
-// PATCH /api/user/profile
 router.patch('/profile', async (req, res) => {
   try {
     const { full_name, phone } = req.body;
@@ -91,7 +73,6 @@ router.patch('/profile', async (req, res) => {
       .eq('id', req.user.id)
       .select('id, full_name, phone, email, status, wallet_balance, package_level, referral_code')
       .single();
-
     if (error) throw error;
     res.json({ message: 'Profile updated', user: data });
   } catch (err) {
