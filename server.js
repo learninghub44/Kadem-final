@@ -12,14 +12,11 @@ app.use(cors({
 }));
 
 const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 100 });
-const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20 });
 app.use('/api/', limiter);
-app.use('/api/auth/', authLimiter);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-app.use('/api/auth', require('./auth'));
 app.use('/api/payments', require('./payments'));
 app.use('/api/tasks', require('./tasks'));
 app.use('/api/user', require('./user'));
