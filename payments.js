@@ -1,9 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
-const supabase = require('../config/supabase');
-const { initiateSTKPush, initiateWithdrawal } = require('../config/payhero');
-const { authenticate, requireActive } = require('../middleware/auth');
+const supabase = require('./supabase');
+const { initiateSTKPush, initiateWithdrawal } = require('./payhero');
+const { authenticate, requireActive } = require('./auth');
 
 const PACKAGES = {
   starter: { price: 100, multiplier: 1.0 },
@@ -12,7 +12,6 @@ const PACKAGES = {
   gold:    { price: 2999, multiplier: 3.0 },
 };
 
-// POST /api/payments/activate — KES 550 activation
 router.post('/activate', authenticate, async (req, res) => {
   try {
     const user = req.user;
@@ -21,7 +20,6 @@ router.post('/activate', authenticate, async (req, res) => {
     const reference = `ACT-${user.id.slice(0, 8)}-${Date.now()}`;
     const result = await initiateSTKPush(user.phone, 550, reference, 'Kadem Account Activation');
 
-    // Log pending transaction
     await supabase.from('transactions').insert({
       user_id: user.id,
       type: 'activation',
@@ -38,7 +36,6 @@ router.post('/activate', authenticate, async (req, res) => {
   }
 });
 
-// POST /api/payments/buy-package
 router.post('/buy-package', authenticate, requireActive, async (req, res) => {
   try {
     const { package_name } = req.body;
@@ -65,7 +62,6 @@ router.post('/buy-package', authenticate, requireActive, async (req, res) => {
   }
 });
 
-// POST /api/payments/deposit
 router.post('/deposit', authenticate, requireActive, async (req, res) => {
   try {
     const { amount } = req.body;
@@ -90,7 +86,6 @@ router.post('/deposit', authenticate, requireActive, async (req, res) => {
   }
 });
 
-// POST /api/payments/withdraw-request
 router.post('/withdraw-request', authenticate, requireActive, async (req, res) => {
   try {
     const { amount, phone } = req.body;
@@ -102,7 +97,6 @@ router.post('/withdraw-request', authenticate, requireActive, async (req, res) =
     if (amount < 1000) return res.status(400).json({ error: 'Minimum withdrawal is KES 1000' });
     if (user.wallet_balance < amount) return res.status(400).json({ error: 'Insufficient wallet balance' });
 
-    // Deduct from wallet immediately (held pending)
     await supabase.from('users').update({ wallet_balance: user.wallet_balance - amount }).eq('id', user.id);
 
     await supabase.from('withdrawals').insert({
@@ -127,7 +121,6 @@ router.post('/withdraw-request', authenticate, requireActive, async (req, res) =
   }
 });
 
-// POST /api/payments/callback — PayHero webhook
 router.post('/callback', async (req, res) => {
   try {
     const { external_reference, status, mpesa_receipt_number, amount } = req.body;
@@ -144,7 +137,6 @@ router.post('/callback', async (req, res) => {
 
     const isSuccess = status === 'SUCCESS';
 
-    // Update transaction
     await supabase.from('transactions').update({
       status: isSuccess ? 'completed' : 'failed',
       mpesa_code: mpesa_receipt_number || null,
@@ -154,11 +146,9 @@ router.post('/callback', async (req, res) => {
 
     const { data: user } = await supabase.from('users').select('*').eq('id', txn.user_id).single();
 
-    // Handle by type
     if (txn.type === 'activation') {
       await supabase.from('users').update({ status: 'active' }).eq('id', user.id);
 
-      // Referral activation bonus
       if (user.referred_by) {
         const { data: referrer } = await supabase.from('users').select('*').eq('referral_code', user.referred_by).single();
         if (referrer) {
@@ -175,7 +165,6 @@ router.post('/callback', async (req, res) => {
       if (PACKAGES[pkg_name]) {
         await supabase.from('users').update({ package_level: pkg_name }).eq('id', user.id);
 
-        // Referral package bonus
         if (user.referred_by) {
           const { data: referrer } = await supabase.from('users').select('*').eq('referral_code', user.referred_by).single();
           if (referrer) {
