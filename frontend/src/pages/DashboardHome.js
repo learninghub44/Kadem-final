@@ -148,20 +148,22 @@ const DashboardHome = () => {
         </div>
       )}
 
-      <div style={{
-        background: '#0f172a', border: '1px solid #25D366', borderRadius: 12,
-        padding: '16px 20px', marginTop: 24, display: 'flex', alignItems: 'center', gap: 12,
-      }}>
-        <span style={{ fontSize: 24 }}>📢</span>
-        <div style={{ flex: 1 }}>
-          <p style={{ color: '#fff', fontWeight: 600, margin: 0 }}>Stay Updated</p>
-          <p style={{ color: '#64748b', fontSize: 13, margin: 0 }}>Join our WhatsApp channel for tasks & announcements</p>
+      {isActive && (
+        <div style={{
+          background: '#0f172a', border: '1px solid #25D366', borderRadius: 12,
+          padding: '16px 20px', marginTop: 24, display: 'flex', alignItems: 'center', gap: 12,
+        }}>
+          <span style={{ fontSize: 24 }}>📢</span>
+          <div style={{ flex: 1 }}>
+            <p style={{ color: '#fff', fontWeight: 600, margin: 0 }}>Stay Updated</p>
+            <p style={{ color: '#64748b', fontSize: 13, margin: 0 }}>Join our WhatsApp channel for tasks & announcements</p>
+          </div>
+          <a href="https://whatsapp.com/channel/0029VbD1tzELdQedEpwZ5841" target="_blank" rel="noopener noreferrer"
+            style={{ background: '#25D366', color: '#fff', padding: '8px 16px', borderRadius: 8, textDecoration: 'none', fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap' }}>
+            Join Now
+          </a>
         </div>
-        <a href="https://whatsapp.com/channel/0029VbD1tzELdQedEpwZ5841" target="_blank" rel="noopener noreferrer"
-          style={{ background: '#25D366', color: '#fff', padding: '8px 16px', borderRadius: 8, textDecoration: 'none', fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap' }}>
-          Join Now
-        </a>
-      </div>
+      )}
     </div>
   );
 };
