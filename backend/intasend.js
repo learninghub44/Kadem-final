@@ -1,17 +1,5 @@
 const IntaSend = require('intasend-node');
 
-/**
- * IntaSend Payment Client
- * Docs: https://developers.intasend.com
- *
- * IMPORTANT — If you get "Host not in allowlist" error:
- * 1. Go to https://app.intasend.com
- * 2. Settings → API Keys & Webhooks
- * 3. Under "Allowed IPs / Hosts", add your Render backend IP
- *    (Find it in Render → your service → Settings → IP Address)
- * 4. Also add webhook URL: https://kadem-api.onrender.com/api/payments/callback
- */
-
 const getClient = () => new IntaSend({
   publishable_key: process.env.INTASEND_PUBLISHABLE_KEY,
   secret_key: process.env.INTASEND_SECRET_KEY,
@@ -25,6 +13,17 @@ const normalizePhone = (phone) => {
   return p;
 };
 
+const parseIntaSendError = (err) => {
+  // SDK rejects with a Buffer on HTTP errors
+  if (Buffer.isBuffer(err)) {
+    try { return JSON.stringify(JSON.parse(err.toString())); }
+    catch { return err.toString(); }
+  }
+  if (err?.response?.data) return JSON.stringify(err.response.data);
+  if (typeof err === 'string') return err;
+  return err?.message || JSON.stringify(err);
+};
+
 const initiateSTKPush = async (phone, amount, reference, customerName) => {
   const payload = {
     amount: Math.round(Number(amount)),
@@ -33,25 +32,15 @@ const initiateSTKPush = async (phone, amount, reference, customerName) => {
     narrative: `Kadem - ${customerName || 'Payment'}`,
   };
 
-  console.log('[IntaSend] STK Push payload:', JSON.stringify(payload));
-
+  console.log('[IntaSend] STK Push:', JSON.stringify(payload));
   try {
-    const client = getClient();
-    const response = await client.collection().mpesaStkPush(payload);
+    const response = await getClient().collection().mpesaStkPush(payload);
     console.log('[IntaSend] STK Success:', JSON.stringify(response));
     return response;
   } catch (err) {
-    // Extract meaningful error
-    let errMsg = err.message || 'Unknown error';
-    if (err.response?.data) {
-      errMsg = JSON.stringify(err.response.data);
-    }
-    // Special case: host not whitelisted
-    if (errMsg.includes('allowlist') || errMsg.includes('whitelist') || err.response?.status === 403) {
-      errMsg = 'HOST_NOT_WHITELISTED: Add your Render IP to IntaSend allowed hosts at app.intasend.com';
-    }
-    console.error('[IntaSend] STK FAILED:', errMsg);
-    throw new Error(errMsg);
+    const msg = parseIntaSendError(err);
+    console.error('[IntaSend] STK FAILED:', msg);
+    throw new Error(msg);
   }
 };
 
@@ -66,23 +55,17 @@ const initiateWithdrawal = async (phone, amount, reference) => {
     }],
   };
 
-  console.log('[IntaSend] Withdrawal payload:', JSON.stringify(payload));
-
+  console.log('[IntaSend] Withdrawal:', JSON.stringify(payload));
   try {
     const client = getClient();
     const initiated = await client.payouts().mpesa(payload);
-    console.log('[IntaSend] Withdrawal initiated:', JSON.stringify(initiated));
     const approved = await client.payouts().approve(initiated);
     console.log('[IntaSend] Withdrawal approved:', JSON.stringify(approved));
     return approved;
   } catch (err) {
-    let errMsg = err.message || 'Unknown error';
-    if (err.response?.data) errMsg = JSON.stringify(err.response.data);
-    if (errMsg.includes('allowlist') || errMsg.includes('whitelist') || err.response?.status === 403) {
-      errMsg = 'HOST_NOT_WHITELISTED: Add your Render IP to IntaSend allowed hosts';
-    }
-    console.error('[IntaSend] Withdrawal FAILED:', errMsg);
-    throw new Error(errMsg);
+    const msg = parseIntaSendError(err);
+    console.error('[IntaSend] Withdrawal FAILED:', msg);
+    throw new Error(msg);
   }
 };
 
