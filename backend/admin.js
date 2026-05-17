@@ -46,8 +46,11 @@ router.get('/users', async (req, res) => {
 router.patch('/users/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, wallet_balance, package_level, role } = req.body;
+    const { full_name, phone, email, status, wallet_balance, package_level, role } = req.body;
     const updates = {};
+    if (full_name) updates.full_name = full_name.trim();
+    if (phone) updates.phone = phone.trim();
+    if (email) updates.email = email.toLowerCase().trim();
     if (status && ['active','inactive','suspended'].includes(status)) updates.status = status;
     if (wallet_balance !== undefined) updates.wallet_balance = Number(wallet_balance);
     if (package_level && ['none','starter','bronze','silver','gold'].includes(package_level)) updates.package_level = package_level;
@@ -251,6 +254,70 @@ router.get('/transactions', async (req, res) => {
     res.json({ transactions: data });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch transactions' });
+  }
+});
+
+
+// POST /api/admin/users — add user manually
+router.post('/users', async (req, res) => {
+  try {
+    const bcrypt = require('bcryptjs');
+    const { full_name, phone, email, password, status, package_level, wallet_balance, role } = req.body;
+    if (!full_name || !phone || !email || !password)
+      return res.status(400).json({ error: 'full_name, phone, email, password required' });
+
+    const { data: existing } = await supabase.from('users').select('id').eq('email', email.toLowerCase().trim()).maybeSingle();
+    if (existing) return res.status(409).json({ error: 'Email already registered' });
+
+    const { data: existingPhone } = await supabase.from('users').select('id').eq('phone', phone.trim()).maybeSingle();
+    if (existingPhone) return res.status(409).json({ error: 'Phone already registered' });
+
+    const password_hash = await bcrypt.hash(password, 12);
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let referral_code = Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+
+    const { data: user, error } = await supabase.from('users').insert({
+      full_name: full_name.trim(), phone: phone.trim(),
+      email: email.toLowerCase().trim(), password_hash, referral_code,
+      status: status || 'active',
+      package_level: package_level || 'none',
+      wallet_balance: Number(wallet_balance || 0),
+      role: role || 'user',
+    }).select('id, full_name, phone, email, status, wallet_balance, package_level, role, referral_code').single();
+
+    if (error) throw error;
+    res.status(201).json({ message: 'User created', user });
+  } catch (err) {
+    console.error('Add user error:', err);
+    res.status(500).json({ error: err.message || 'Failed to create user' });
+  }
+});
+
+// DELETE /api/admin/users/:id
+router.delete('/users/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (id === req.user.id) return res.status(400).json({ error: 'Cannot delete your own account' });
+    const { error } = await supabase.from('users').delete().eq('id', id);
+    if (error) throw error;
+    res.json({ message: 'User deleted' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete user' });
+  }
+});
+
+// GET /api/admin/users/:id/referrals
+router.get('/users/:id/referrals', async (req, res) => {
+  try {
+    const { data: user } = await supabase.from('users').select('referral_code').eq('id', req.params.id).single();
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    const { data: referrals } = await supabase.from('users')
+      .select('id, full_name, phone, email, status, package_level, created_at')
+      .eq('referred_by', user.referral_code)
+      .order('created_at', { ascending: false });
+    res.json({ referrals: referrals || [] });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch referrals' });
   }
 });
 
