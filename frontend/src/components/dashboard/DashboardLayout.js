@@ -6,19 +6,17 @@ import {
   ArrowUpCircle, Package, Users, Receipt, User, LogOut, Menu, X, Shield, Lock
 } from 'lucide-react';
 
-// Items requiring active account
-
 const navItems = [
-  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', end: true },
+  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', end: true, locked: false },
   { to: '/dashboard/tasks', icon: Smartphone, label: 'WhatsApp Tasks', locked: true },
   { to: '/dashboard/upload', icon: Upload, label: 'Upload Screenshot', locked: true },
-  { to: '/dashboard/wallet', icon: Wallet, label: 'Wallet' },
+  { to: '/dashboard/packages', icon: Package, label: 'Buy Package', locked: true },
   { to: '/dashboard/deposit', icon: ArrowDownCircle, label: 'Deposit', locked: true },
   { to: '/dashboard/withdraw', icon: ArrowUpCircle, label: 'Withdraw', locked: true },
-  { to: '/dashboard/packages', icon: Package, label: 'Buy Package', locked: true },
-  { to: '/dashboard/referrals', icon: Users, label: 'Referrals' },
-  { to: '/dashboard/transactions', icon: Receipt, label: 'Transactions' },
-  { to: '/dashboard/profile', icon: User, label: 'Profile' },
+  { to: '/dashboard/wallet', icon: Wallet, label: 'Wallet', locked: false },
+  { to: '/dashboard/referrals', icon: Users, label: 'Referrals', locked: false },
+  { to: '/dashboard/transactions', icon: Receipt, label: 'Transactions', locked: false },
+  { to: '/dashboard/profile', icon: User, label: 'Profile', locked: false },
 ];
 
 export const DashboardLayout = () => {
@@ -28,7 +26,14 @@ export const DashboardLayout = () => {
 
   const handleLogout = () => { logout(); navigate('/login'); };
   const isActive = user?.status === 'active';
-  const statusColor = isActive ? '#22c55e' : '#f59e0b';
+
+  const handleNavClick = (locked, e) => {
+    setSidebarOpen(false);
+    if (locked && !isActive) {
+      e.preventDefault();
+      navigate('/dashboard');
+    }
+  };
 
   return (
     <div className="dashboard-layout">
@@ -45,7 +50,7 @@ export const DashboardLayout = () => {
           <div className="avatar">{user?.full_name?.[0]?.toUpperCase()}</div>
           <div>
             <p className="user-name">{user?.full_name}</p>
-            <span className="status-badge" style={{ background: statusColor }}>
+            <span className="status-badge" style={{ background: isActive ? '#22c55e' : '#f59e0b' }}>
               {isActive ? '✅ ACTIVE' : '🔒 INACTIVE'}
             </span>
           </div>
@@ -56,25 +61,16 @@ export const DashboardLayout = () => {
           <strong>KES {Number(user?.wallet_balance || 0).toLocaleString()}</strong>
         </div>
 
-        {/* Activation prompt in sidebar */}
-        {!isActive && (
-          <div style={{ margin: '8px 12px', background: '#1e293b', border: '1px solid #f59e0b', borderRadius: 8, padding: '10px 12px' }}>
-            <p style={{ color: '#f59e0b', fontSize: 12, margin: '0 0 6px', fontWeight: 600 }}>🔒 Account Locked</p>
-            <p style={{ color: '#64748b', fontSize: 11, margin: '0 0 8px' }}>Activate to unlock all features</p>
-            <button onClick={() => { navigate('/dashboard'); setSidebarOpen(false); }} style={{ background: '#f59e0b', color: '#000', border: 'none', borderRadius: 6, padding: '6px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer', width: '100%' }}>
-              Activate — KES 550
-            </button>
-          </div>
-        )}
-
         <nav className="sidebar-nav">
           {navItems.map(({ to, icon: Icon, label, end, locked }) => (
             <NavLink
               key={to}
               to={to}
               end={end}
-              className={({ isActive }) => `nav-item ${isActive ? 'active' : ''} ${locked && !user?.status === 'active' ? 'nav-locked' : ''}`}
-              onClick={() => setSidebarOpen(false)}
+              className={({ isActive: active }) =>
+                `nav-item ${active ? 'active' : ''} ${locked && !isActive ? 'nav-locked' : ''}`
+              }
+              onClick={(e) => handleNavClick(locked, e)}
             >
               <Icon size={18} />
               <span>{label}</span>
@@ -84,8 +80,7 @@ export const DashboardLayout = () => {
 
           {user?.role === 'admin' && (
             <NavLink to="/admin" className="nav-item admin-link" onClick={() => setSidebarOpen(false)}>
-              <Shield size={18} />
-              <span>Admin Panel</span>
+              <Shield size={18} /><span>Admin Panel</span>
             </NavLink>
           )}
         </nav>
@@ -101,18 +96,17 @@ export const DashboardLayout = () => {
         <header className="topbar">
           <button className="menu-btn" onClick={() => setSidebarOpen(true)}><Menu size={22} /></button>
           <div className="topbar-right">
-            {!isActive ? (
-              <span style={{ background: '#f59e0b22', color: '#f59e0b', padding: '4px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600 }}>
+            {!isActive && (
+              <span style={{ background: '#f59e0b22', color: '#f59e0b', padding: '4px 12px', borderRadius: 6, fontSize: 12, fontWeight: 700 }}>
                 🔒 Account Locked
               </span>
-            ) : (
-              <span className="package-badge">{user?.package_level?.toUpperCase() || 'NO PACKAGE'}</span>
+            )}
+            {isActive && user?.package_level && user.package_level !== 'none' && (
+              <span className="package-badge">{user.package_level.toUpperCase()}</span>
             )}
           </div>
         </header>
-        <div className="page-content">
-          <Outlet />
-        </div>
+        <div className="page-content"><Outlet /></div>
       </main>
     </div>
   );

@@ -1,33 +1,48 @@
 const express = require('express');
 const router = express.Router();
-const { v4: uuidv4 } = require('uuid');
 const supabase = require('./supabase');
 const { initiateSTKPush, initiateWithdrawal } = require('./payhero');
 const { authenticate, requireActive } = require('./auth');
 
-const PACKAGES = {
-  starter: { price: 100, multiplier: 1.0 },
-  bronze:  { price: 500, multiplier: 1.5 },
-  silver:  { price: 1500, multiplier: 2.0 },
-  gold:    { price: 2999, multiplier: 3.0 },
-};
 const ACTIVATION_FEE = 550;
+const PACKAGES = {
+  starter: { price: 100 },
+  bronze:  { price: 500 },
+  silver:  { price: 1500 },
+  gold:    { price: 2999 },
+};
 
 // POST /api/payments/activate
 router.post('/activate', authenticate, async (req, res) => {
   try {
     const user = req.user;
-    if (user.status === 'active') return res.status(400).json({ error: 'Account already active' });
+    if (user.status === 'active') return res.status(400).json({ error: 'Account is already active' });
+
     const reference = `ACT-${user.id.slice(0, 8)}-${Date.now()}`;
-    const result = await initiateSTKPush(user.phone, ACTIVATION_FEE, reference, 'Kadem Account Activation');
+
+    let stkResult;
+    try {
+      stkResult = await initiateSTKPush(user.phone, ACTIVATION_FEE, reference, user.full_name);
+    } catch (payErr) {
+      return res.status(502).json({
+        error: 'STK push failed. Check PAYHERO_AUTHORIZATION and PAYHERO_CHANNEL_ID in your environment variables.',
+        details: payErr.message,
+      });
+    }
+
     await supabase.from('transactions').insert({
-      user_id: user.id, type: 'activation', amount: ACTIVATION_FEE, status: 'pending',
-      payhero_reference: reference, description: 'Account activation fee',
+      user_id: user.id,
+      type: 'activation',
+      amount: ACTIVATION_FEE,
+      status: 'pending',
+      payhero_reference: reference,
+      description: 'Account activation fee',
     });
-    res.json({ message: 'STK push sent. Enter your M-Pesa PIN.', reference });
+
+    res.json({ message: 'STK push sent! Check your phone and enter your M-Pesa PIN.', reference, payhero: stkResult });
   } catch (err) {
-    console.error('Activation error:', err.response?.data || err.message);
-    res.status(502).json({ error: 'Payment failed. Check your PayHero configuration.', details: err.response?.data });
+    console.error('[Activate] Error:', err);
+    res.status(500).json({ error: 'Failed to initiate activation payment' });
   }
 });
 
@@ -37,17 +52,29 @@ router.post('/buy-package', authenticate, requireActive, async (req, res) => {
     const { package_name } = req.body;
     const pkg = PACKAGES[package_name];
     if (!pkg) return res.status(400).json({ error: 'Invalid package name' });
+
     const user = req.user;
-    const reference = `PKG-${user.id.slice(0, 8)}-${Date.now()}`;
-    await initiateSTKPush(user.phone, pkg.price, reference, `Kadem ${package_name} Package`);
+    const reference = `PKG-${package_name.toUpperCase()}-${user.id.slice(0, 8)}-${Date.now()}`;
+
+    let stkResult;
+    try {
+      stkResult = await initiateSTKPush(user.phone, pkg.price, reference, user.full_name);
+    } catch (payErr) {
+      return res.status(502).json({ error: 'STK push failed.', details: payErr.message });
+    }
+
     await supabase.from('transactions').insert({
-      user_id: user.id, type: 'package', amount: pkg.price, status: 'pending',
-      payhero_reference: reference, description: `${package_name} package purchase`,
+      user_id: user.id,
+      type: 'package',
+      amount: pkg.price,
+      status: 'pending',
+      payhero_reference: reference,
+      description: `${package_name} package`,
     });
-    res.json({ message: 'STK push sent. Enter your M-Pesa PIN.', reference });
+
+    res.json({ message: 'STK push sent! Enter your M-Pesa PIN.', reference, payhero: stkResult });
   } catch (err) {
-    console.error('Buy package error:', err.response?.data || err.message);
-    res.status(502).json({ error: 'Payment failed.', details: err.response?.data });
+    res.status(500).json({ error: 'Failed to initiate package payment' });
   }
 });
 
@@ -55,19 +82,26 @@ router.post('/buy-package', authenticate, requireActive, async (req, res) => {
 router.post('/deposit', authenticate, requireActive, async (req, res) => {
   try {
     const { amount } = req.body;
-    const amt = Number(amount);
-    if (!amt || amt < 10) return res.status(400).json({ error: 'Minimum deposit is KES 10' });
+    if (!amount || Number(amount) < 10) return res.status(400).json({ error: 'Minimum deposit is KES 10' });
+
     const user = req.user;
     const reference = `DEP-${user.id.slice(0, 8)}-${Date.now()}`;
-    await initiateSTKPush(user.phone, amt, reference, 'Kadem Wallet Deposit');
+
+    let stkResult;
+    try {
+      stkResult = await initiateSTKPush(user.phone, amount, reference, user.full_name);
+    } catch (payErr) {
+      return res.status(502).json({ error: 'STK push failed.', details: payErr.message });
+    }
+
     await supabase.from('transactions').insert({
-      user_id: user.id, type: 'deposit', amount: amt, status: 'pending',
-      payhero_reference: reference, description: 'Wallet deposit',
+      user_id: user.id, type: 'deposit', amount: Number(amount),
+      status: 'pending', payhero_reference: reference, description: 'Wallet deposit',
     });
-    res.json({ message: 'STK push sent.', reference });
+
+    res.json({ message: 'STK push sent! Enter your M-Pesa PIN.', reference, payhero: stkResult });
   } catch (err) {
-    console.error('Deposit error:', err.response?.data || err.message);
-    res.status(502).json({ error: 'Payment failed.', details: err.response?.data });
+    res.status(500).json({ error: 'Failed to initiate deposit' });
   }
 });
 
@@ -76,126 +110,115 @@ router.post('/withdraw-request', authenticate, requireActive, async (req, res) =
   try {
     const { amount, phone } = req.body;
     const user = req.user;
-    const amt = Number(amount);
 
     if (!['silver', 'gold'].includes(user.package_level))
       return res.status(403).json({ error: 'Withdrawals require Silver or Gold package' });
-    if (amt < 1000) return res.status(400).json({ error: 'Minimum withdrawal is KES 1,000' });
-    if (Number(user.wallet_balance) < amt)
+    if (!amount || Number(amount) < 1000)
+      return res.status(400).json({ error: 'Minimum withdrawal is KES 1,000' });
+    if (Number(user.wallet_balance) < Number(amount))
       return res.status(400).json({ error: 'Insufficient wallet balance' });
-    if (!phone || !/^(07|01)\d{8}$/.test(phone.trim()))
-      return res.status(400).json({ error: 'Enter a valid M-Pesa phone number' });
 
-    // Deduct balance atomically
-    const { error: deductErr } = await supabase
-      .from('users')
-      .update({ wallet_balance: Number(user.wallet_balance) - amt })
-      .eq('id', user.id)
-      .eq('wallet_balance', user.wallet_balance); // optimistic lock
-
-    if (deductErr) return res.status(400).json({ error: 'Could not process withdrawal. Please try again.' });
-
-    await supabase.from('withdrawals').insert({
-      user_id: user.id, amount: amt, phone: phone.trim(), status: 'pending',
-    });
+    const newBalance = Number(user.wallet_balance) - Number(amount);
+    await supabase.from('users').update({ wallet_balance: newBalance }).eq('id', user.id);
+    await supabase.from('withdrawals').insert({ user_id: user.id, amount: Number(amount), phone: phone || user.phone, status: 'pending' });
     await supabase.from('transactions').insert({
-      user_id: user.id, type: 'withdrawal', amount: amt, status: 'pending',
-      description: 'Withdrawal request — awaiting admin approval',
+      user_id: user.id, type: 'withdrawal', amount: Number(amount),
+      status: 'pending', description: 'Withdrawal request — pending admin approval',
     });
-    res.json({ message: 'Withdrawal request submitted. Admin will process within 24 hours.' });
+
+    res.json({ message: 'Withdrawal submitted. Admin will review and send M-Pesa within 24 hours.' });
   } catch (err) {
-    console.error('Withdrawal error:', err);
-    res.status(500).json({ error: 'Failed to submit withdrawal' });
+    console.error('[Withdraw] Error:', err);
+    res.status(500).json({ error: 'Failed to submit withdrawal request' });
   }
 });
 
 // POST /api/payments/callback — PayHero webhook
 router.post('/callback', async (req, res) => {
   try {
-    console.log('PayHero callback:', JSON.stringify(req.body));
-    const { external_reference, status, Status, mpesa_receipt_number, MpesaReceiptNumber, amount, Amount } = req.body;
+    console.log('[Callback] PayHero payload:', JSON.stringify(req.body));
 
-    // PayHero sends status in different cases/fields
-    const payStatus = (status || Status || '').toUpperCase();
-    const mpesaCode = mpesa_receipt_number || MpesaReceiptNumber || null;
-    const paidAmount = Number(amount || Amount || 0);
+    const {
+      external_reference,
+      status, Status,
+      mpesa_receipt_number, MpesaReceiptNumber,
+      amount, Amount,
+    } = req.body;
+
     const ref = external_reference;
+    const payStatus = status || Status;
+    const mpesaCode = mpesa_receipt_number || MpesaReceiptNumber || null;
+    const paidAmount = amount || Amount;
 
-    if (!ref) return res.status(400).json({ error: 'Invalid callback payload' });
+    if (!ref) return res.status(400).json({ error: 'Missing external_reference' });
 
-    const { data: txn } = await supabase
-      .from('transactions')
-      .select('*')
-      .eq('payhero_reference', ref)
-      .maybeSingle();
+    const { data: txn } = await supabase.from('transactions').select('*').eq('payhero_reference', ref).single();
+    if (!txn) return res.status(200).json({ message: 'Transaction not found, ignoring' });
 
-    if (!txn) {
-      console.warn('Callback: transaction not found for reference', ref);
-      return res.status(200).json({ message: 'OK' }); // Return 200 to stop retries
-    }
+    const isSuccess = payStatus === 'SUCCESS';
 
-    const isSuccess = ['SUCCESS', 'COMPLETE', 'COMPLETED'].includes(payStatus);
-
-    // Update transaction status
     await supabase.from('transactions').update({
       status: isSuccess ? 'completed' : 'failed',
       mpesa_code: mpesaCode,
     }).eq('payhero_reference', ref);
 
-    if (!isSuccess) {
-      console.log('Payment failed for reference:', ref, 'Status:', payStatus);
-      return res.json({ message: 'Payment failure recorded' });
-    }
+    if (!isSuccess) return res.status(200).json({ message: 'Failed payment recorded' });
 
-    const { data: user } = await supabase.from('users').select('*').eq('id', txn.user_id).maybeSingle();
-    if (!user) return res.status(200).json({ message: 'OK' });
+    const { data: user } = await supabase.from('users').select('*').eq('id', txn.user_id).single();
+    if (!user) return res.status(200).json({ message: 'User not found' });
 
     if (txn.type === 'activation') {
       await supabase.from('users').update({ status: 'active' }).eq('id', user.id);
-      console.log('User activated:', user.email);
 
-      // Referral activation bonus
       if (user.referred_by) {
-        const { data: referrer } = await supabase.from('users').select('*').eq('referral_code', user.referred_by).maybeSingle();
+        const { data: referrer } = await supabase.from('users').select('*').eq('referral_code', user.referred_by).single();
         if (referrer) {
           const bonus = Number(process.env.REFERRAL_ACTIVATION_BONUS || 100);
           await supabase.from('users').update({ wallet_balance: Number(referrer.wallet_balance) + bonus }).eq('id', referrer.id);
-          await supabase.from('referral_earnings').insert({ referrer_id: referrer.id, referred_id: user.id, event: 'activation', amount: bonus });
-          await supabase.from('transactions').insert({ user_id: referrer.id, type: 'referral', amount: bonus, status: 'completed', description: `Referral bonus — ${user.full_name} activated` });
+          await supabase.from('transactions').insert({ user_id: referrer.id, type: 'referral', amount: bonus, status: 'completed', description: `Referral bonus: ${user.full_name} activated` });
         }
       }
     }
 
     if (txn.type === 'package') {
-      const pkgMatch = txn.description?.match(/^(\w+)\s+package/i);
-      const pkg_name = pkgMatch?.[1]?.toLowerCase();
-      if (pkg_name && PACKAGES[pkg_name]) {
-        await supabase.from('users').update({ package_level: pkg_name }).eq('id', user.id);
-        console.log('Package upgraded:', user.email, '->', pkg_name);
+      // Reference format: PKG-GOLD-xxxxxxxx-timestamp
+      const parts = ref.split('-');
+      const pkgName = parts[1]?.toLowerCase();
+      if (pkgName && PACKAGES[pkgName]) {
+        await supabase.from('users').update({ package_level: pkgName }).eq('id', user.id);
 
         if (user.referred_by) {
-          const { data: referrer } = await supabase.from('users').select('*').eq('referral_code', user.referred_by).maybeSingle();
+          const { data: referrer } = await supabase.from('users').select('*').eq('referral_code', user.referred_by).single();
           if (referrer) {
             const bonus = Number(process.env.REFERRAL_PACKAGE_BONUS || 150);
             await supabase.from('users').update({ wallet_balance: Number(referrer.wallet_balance) + bonus }).eq('id', referrer.id);
-            await supabase.from('referral_earnings').insert({ referrer_id: referrer.id, referred_id: user.id, event: 'package', amount: bonus });
-            await supabase.from('transactions').insert({ user_id: referrer.id, type: 'referral', amount: bonus, status: 'completed', description: `Referral bonus — ${user.full_name} bought ${pkg_name}` });
+            await supabase.from('transactions').insert({ user_id: referrer.id, type: 'referral', amount: bonus, status: 'completed', description: `Referral bonus: ${user.full_name} bought ${pkgName}` });
           }
         }
       }
     }
 
     if (txn.type === 'deposit') {
-      const credit = paidAmount || Number(txn.amount);
-      await supabase.from('users').update({ wallet_balance: Number(user.wallet_balance) + credit }).eq('id', user.id);
-      console.log('Deposit credited:', user.email, credit);
+      const credited = Number(paidAmount || txn.amount);
+      await supabase.from('users').update({ wallet_balance: Number(user.wallet_balance) + credited }).eq('id', user.id);
     }
 
-    res.json({ message: 'Callback processed successfully' });
+    return res.status(200).json({ message: 'Callback processed successfully' });
   } catch (err) {
-    console.error('Callback error:', err);
-    res.status(200).json({ message: 'OK' }); // Always 200 to prevent PayHero retries
+    console.error('[Callback] Error:', err);
+    return res.status(500).json({ error: 'Callback processing failed' });
   }
+});
+
+// GET /api/payments/test-payhero — Admin: verify PayHero config
+const { requireAdmin } = require('./auth');
+router.get('/test-payhero', authenticate, requireAdmin, (req, res) => {
+  res.json({
+    PAYHERO_AUTHORIZATION: process.env.PAYHERO_AUTHORIZATION ? '✅ SET' : '❌ MISSING',
+    PAYHERO_CHANNEL_ID: process.env.PAYHERO_CHANNEL_ID || '❌ MISSING',
+    PAYHERO_CALLBACK_URL: process.env.PAYHERO_CALLBACK_URL || '❌ MISSING',
+    note: 'PAYHERO_AUTHORIZATION must be: Basic <base64(api_username:api_password)>',
+  });
 });
 
 module.exports = router;
