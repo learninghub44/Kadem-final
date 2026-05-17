@@ -14,6 +14,9 @@ if (missing.length) {
 
 const app = express();
 
+// Trust Render's proxy (fixes express-rate-limit X-Forwarded-For warning)
+app.set('trust proxy', 1);
+
 // Security headers
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
