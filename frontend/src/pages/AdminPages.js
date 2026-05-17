@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
@@ -10,15 +10,8 @@ import {
 
 // ─── MODAL WRAPPER ─────────────────────────────────────────────
 const Modal = ({ title, onClose, children }) => (
-  <div style={{
-    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    zIndex: 2000, padding: 16, overflowY: 'auto'
-  }}>
-    <div style={{
-      background: '#1e293b', borderRadius: 16, padding: 28,
-      width: '100%', maxWidth: 560, position: 'relative', maxHeight: '90vh', overflowY: 'auto'
-    }}>
+  <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-box" onClick={e => e.stopPropagation()}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <h2 style={{ margin: 0, color: '#f1f5f9', fontSize: '1.1rem' }}>{title}</h2>
         <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: 4 }}>
@@ -390,53 +383,111 @@ export const AdminUsers = () => {
 export const AdminTasks = () => {
   const [tasks, setTasks] = useState([]);
   const [form, setForm] = useState({ title: '', description: '', image_url: '' });
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
   const [editTask, setEditTask] = useState(null);
   const [loading, setLoading] = useState(false);
+  const fileRef = useRef();
+  const editFileRef = useRef();
 
   const load = useCallback(() => api.get('/admin/tasks').then(r => setTasks(r.data.tasks)), []);
   useEffect(() => { load(); }, [load]);
 
+  const uploadImage = async (file) => {
+    const base64 = await new Promise((res, rej) => {
+      const reader = new FileReader();
+      reader.onload = () => res(reader.result.split(',')[1]);
+      reader.onerror = rej;
+      reader.readAsDataURL(file);
+    });
+    const resp = await api.post('/tasks/upload-image', { image_base64: base64, image_mime: file.type });
+    return resp.data.image_url;
+  };
+
+  const handleImageSelect = (e, isEdit = false) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { toast.error('Select an image file'); return; }
+    if (file.size > 5 * 1024 * 1024) { toast.error('Image must be under 5MB'); return; }
+    const previewUrl = URL.createObjectURL(file);
+    if (isEdit) {
+      setEditTask(prev => ({ ...prev, _imageFile: file, _imagePreview: previewUrl }));
+    } else {
+      setImageFile(file);
+      setImagePreview(previewUrl);
+    }
+  };
+
   const createTask = async (e) => {
     e.preventDefault();
+    if (!form.title.trim()) { toast.error('Title is required'); return; }
     setLoading(true);
     try {
-      await api.post('/admin/tasks', form);
-      toast.success('Task created');
+      let image_url = form.image_url;
+      if (imageFile) image_url = await uploadImage(imageFile);
+      await api.post('/admin/tasks', { ...form, image_url });
+      toast.success('Task created!');
       setForm({ title: '', description: '', image_url: '' });
+      setImageFile(null); setImagePreview(null);
+      if (fileRef.current) fileRef.current.value = '';
       load();
-    } catch { toast.error('Failed to create task'); } finally { setLoading(false); }
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to create task');
+    } finally { setLoading(false); }
   };
 
   const saveEdit = async () => {
     try {
-      await api.patch(`/admin/tasks/${editTask.id}`, editTask);
+      let image_url = editTask.image_url;
+      if (editTask._imageFile) image_url = await uploadImage(editTask._imageFile);
+      await api.patch(`/admin/tasks/${editTask.id}`, { ...editTask, image_url });
       toast.success('Task updated');
-      setEditTask(null);
-      load();
+      setEditTask(null); load();
     } catch { toast.error('Failed'); }
   };
 
   const toggleTask = async (id, is_active) => { await api.patch(`/admin/tasks/${id}`, { is_active }); load(); };
 
   const deleteTask = async (id) => {
-    if (!window.confirm('Delete this task? All submissions for it will also be deleted.')) return;
+    if (!window.confirm('Delete this task? All submissions will also be removed.')) return;
     try { await api.delete(`/admin/tasks/${id}`); toast.success('Task deleted'); load(); }
-    catch { toast.error('Failed to delete task'); }
+    catch { toast.error('Failed'); }
   };
 
   return (
     <div className="page">
       <h1 className="page-title">Manage Tasks</h1>
-      <div className="form-card">
+      <div className="form-card" style={{ maxWidth: '100%' }}>
         <h2 style={{ marginBottom: 16, fontSize: '1rem', color: '#94a3b8' }}>➕ Create New Task</h2>
         <form onSubmit={createTask}>
           <Field label="Title *"><Inp value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} required placeholder="e.g. Share Kadem launch status" /></Field>
-          <Field label="Description"><textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}
-            placeholder="Describe what users should post as their WhatsApp status..."
-            style={{ width: '100%', background: '#0f172a', border: '1px solid #334155', borderRadius: 8, padding: '9px 12px', color: '#f1f5f9', fontSize: 14, minHeight: 80, resize: 'vertical', boxSizing: 'border-box' }} /></Field>
-          <Field label="Image URL (content image for the status)"><Inp type="url" value={form.image_url} onChange={e => setForm({ ...form, image_url: e.target.value })} placeholder="https://..." /></Field>
-          {form.image_url && <img src={form.image_url} alt="preview" style={{ width: '100%', maxHeight: 140, objectFit: 'cover', borderRadius: 8, marginBottom: 12 }} onError={e => e.target.style.display = 'none'} />}
-          <button type="submit" className="btn-primary" disabled={loading}>{loading ? 'Creating...' : 'Create Task'}</button>
+          <Field label="Description">
+            <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}
+              placeholder="Describe what users should post as their WhatsApp status..."
+              style={{ width: '100%', background: '#0f172a', border: '1px solid #334155', borderRadius: 8, padding: '9px 12px', color: '#f1f5f9', fontSize: 14, minHeight: 80, resize: 'vertical', boxSizing: 'border-box' }} />
+          </Field>
+          <Field label="Task Image (uploaded or URL)">
+            <div onClick={() => fileRef.current?.click()} style={{
+              border: '2px dashed #334155', borderRadius: 10, padding: 16, textAlign: 'center',
+              cursor: 'pointer', background: '#0f172a', marginBottom: 8, minHeight: 80,
+              display: 'flex', alignItems: 'center', justifyContent: 'center'
+            }}>
+              {imagePreview
+                ? <img src={imagePreview} alt="preview" style={{ maxHeight: 120, maxWidth: '100%', borderRadius: 6 }} />
+                : <div><div style={{ fontSize: 24 }}>🖼</div><p style={{ color: '#64748b', margin: '4px 0 0', fontSize: 13 }}>Tap to upload image</p></div>
+              }
+            </div>
+            <input ref={fileRef} type="file" accept="image/*" onChange={e => handleImageSelect(e)} style={{ display: 'none' }} />
+            {imageFile && <small style={{ color: '#22c55e' }}>✅ {imageFile.name} selected</small>}
+            <p style={{ color: '#475569', fontSize: 12, margin: '4px 0 0' }}>Or paste image URL:</p>
+            <Inp type="url" value={form.image_url} onChange={e => { setForm({ ...form, image_url: e.target.value }); if (e.target.value) { setImageFile(null); setImagePreview(null); } }} placeholder="https://..." style={{ marginTop: 6 }} />
+          </Field>
+          {(imagePreview || form.image_url) && (
+            <img src={imagePreview || form.image_url} alt="preview" style={{ width: '100%', maxHeight: 140, objectFit: 'cover', borderRadius: 8, marginBottom: 12 }} onError={e => e.target.style.display = 'none'} />
+          )}
+          <button type="submit" className="btn-primary" disabled={loading} style={{ width: '100%' }}>
+            {loading ? 'Creating...' : '➕ Create Task'}
+          </button>
         </form>
       </div>
 
@@ -470,7 +521,19 @@ export const AdminTasks = () => {
             <textarea value={editTask.description || ''} onChange={e => setEditTask({ ...editTask, description: e.target.value })}
               style={{ width: '100%', background: '#0f172a', border: '1px solid #334155', borderRadius: 8, padding: '9px 12px', color: '#f1f5f9', fontSize: 14, minHeight: 80, resize: 'vertical', boxSizing: 'border-box' }} />
           </Field>
-          <Field label="Image URL"><Inp value={editTask.image_url || ''} onChange={e => setEditTask({ ...editTask, image_url: e.target.value })} /></Field>
+          <Field label="Task Image">
+            <div onClick={() => editFileRef.current?.click()} style={{
+              border: '2px dashed #334155', borderRadius: 10, padding: 12, textAlign: 'center',
+              cursor: 'pointer', background: '#0f172a', marginBottom: 8
+            }}>
+              {(editTask._imagePreview || editTask.image_url)
+                ? <img src={editTask._imagePreview || editTask.image_url} alt="preview" style={{ maxHeight: 100, maxWidth: '100%', borderRadius: 6 }} onError={e => e.target.style.display='none'} />
+                : <p style={{ color: '#64748b', margin: 0, fontSize: 13 }}>🖼 Tap to change image</p>
+              }
+            </div>
+            <input ref={editFileRef} type="file" accept="image/*" onChange={e => handleImageSelect(e, true)} style={{ display: 'none' }} />
+            <Inp value={editTask.image_url || ''} onChange={e => setEditTask({ ...editTask, image_url: e.target.value })} placeholder="Or paste image URL..." style={{ marginTop: 6 }} />
+          </Field>
           <Field label="Status">
             <Sel value={editTask.is_active ? 'active' : 'inactive'} onChange={e => setEditTask({ ...editTask, is_active: e.target.value === 'active' })}>
               <option value="active">Active</option>
@@ -483,6 +546,7 @@ export const AdminTasks = () => {
     </div>
   );
 };
+
 
 // ─── ADMIN SUBMISSIONS ─────────────────────────────────────────
 export const AdminSubmissions = () => {

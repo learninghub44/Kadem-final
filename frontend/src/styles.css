@@ -394,3 +394,57 @@ h1, h2, h3 { font-family: 'Sora', sans-serif; }
 .photo-placeholder p { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 4px; }
 .photo-placeholder small { color: var(--border); font-size: 0.75rem; }
 .photo-preview { width: 100%; max-height: 280px; object-fit: contain; background: #000; display: block; }
+
+/* ===== MODAL FIXES ===== */
+/* Ensure modal overlay covers full screen and scrolls */
+.modal-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  background: rgba(0,0,0,0.8) !important;
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: center !important;
+  z-index: 2000 !important;
+  padding: 16px !important;
+  overflow-y: auto !important;
+}
+.modal-box {
+  background: #1e293b;
+  border-radius: 14px;
+  padding: 24px 20px;
+  width: 100%;
+  max-width: 540px;
+  position: relative;
+  margin: auto;
+  box-sizing: border-box;
+}
+@media (max-width: 600px) {
+  .modal-box { padding: 18px 14px; border-radius: 10px; }
+}
+
+/* ===== TASK CTA BUTTON ===== */
+.task-cta-btn {
+  display: inline-block;
+  background: var(--primary);
+  color: white;
+  padding: 8px 16px;
+  border-radius: 8px;
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-top: 8px;
+  transition: opacity 0.2s;
+}
+.task-cta-btn:hover { opacity: 0.85; }
+
+/* ===== FORM INPUTS FULL WIDTH ON MOBILE ===== */
+@media (max-width: 600px) {
+  .form-card { padding: 18px 14px; }
+  select, input[type="text"], input[type="number"],
+  input[type="email"], input[type="tel"], input[type="password"],
+  input[type="url"], textarea {
+    font-size: 16px !important; /* prevent iOS zoom */
+  }
+  .packages-grid { grid-template-columns: 1fr 1fr; }
+  .data-table th, .data-table td { padding: 8px 10px; font-size: 0.78rem; }
+}
