@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
@@ -19,11 +19,7 @@ const DashboardHome = () => {
   const [activating, setActivating] = useState(false);
   const navigate = useNavigate();
 
-  useEffect(() => {
-    loadStats();
-  }, []);
-
-  const loadStats = async () => {
+  const loadStats = useCallback(async () => {
     try {
       const [walletRes, subsRes] = await Promise.all([
         api.get('/user/wallet'),
@@ -37,7 +33,11 @@ const DashboardHome = () => {
         approvedSubmissions: subs.filter(s => s.status === 'approved').length,
       });
     } catch {}
-  };
+  }, [user?.status]);
+
+  useEffect(() => {
+    loadStats();
+  }, [loadStats]);
 
   const handleActivate = async () => {
     setActivating(true);
