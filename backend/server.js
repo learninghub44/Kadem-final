@@ -21,7 +21,7 @@ app.use(helmet({
 
 // CORS - strict in production
 const allowedOrigins = process.env.FRONTEND_URL
-  ? [process.env.FRONTEND_URL]
+  ? [process.env.FRONTEND_URL.replace(/\/$/, '')]
   : ['http://localhost:3000'];
 
 app.use(cors({
