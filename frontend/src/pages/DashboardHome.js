@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
-import { Wallet, TrendingUp, Users, Package, AlertCircle, Lock } from 'lucide-react';
+import { Wallet, TrendingUp, Users, Package, Lock } from 'lucide-react';
 
 const PACKAGES = [
   { name: 'starter', price: 100, multiplier: '1x', color: '#6366f1' },

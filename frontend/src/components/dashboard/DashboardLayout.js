@@ -7,7 +7,6 @@ import {
 } from 'lucide-react';
 
 // Items requiring active account
-const lockedItems = ['/dashboard/tasks', '/dashboard/upload', '/dashboard/deposit', '/dashboard/withdraw', '/dashboard/packages'];
 
 const navItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', end: true },

@@ -303,21 +303,23 @@ export const AdminPayments = () => {
   const load = () => api.get('/admin/transactions').then(r => setTransactions(r.data.transactions));
   useEffect(() => { load(); }, []);
 
-  // Admin manually activate user if payment is confirmed offline
-  const manualActivate = async (userId) => {
-    if (!window.confirm('Manually activate this user? Only do this after confirming M-Pesa payment.')) return;
-    try {
-      await api.patch(`/admin/users/${userId}`, { status: 'active' });
-      toast.success('User activated successfully');
-      load();
-    } catch { toast.error('Failed to activate user'); }
-  };
-
   const rejectPayment = async (txnId) => {
     if (!window.confirm('Mark this payment as failed?')) return;
     try {
-      // We update the transaction status - since this is a direct DB update
-      toast.info('Payment rejected — user remains inactive');
+      await api.patch(`/admin/transactions/${txnId}`, { status: 'failed' });
+      toast.success('Payment marked as failed');
+      load();
+    } catch { toast.error('Failed to update payment'); }
+  };
+
+  const completePayment = async (txnId, userId, type) => {
+    if (!window.confirm('Manually mark as completed? Only do this if you confirmed M-Pesa payment.')) return;
+    try {
+      await api.patch(`/admin/transactions/${txnId}`, { status: 'completed' });
+      if (type === 'activation') {
+        await api.patch(`/admin/users/${userId}`, { status: 'active' });
+      }
+      toast.success('Payment completed & user updated');
       load();
     } catch { toast.error('Failed'); }
   };
@@ -353,9 +355,9 @@ export const AdminPayments = () => {
                 <td><span className={`badge ${t.status}`}>{t.status}</span></td>
                 <td>{new Date(t.created_at).toLocaleDateString()}</td>
                 <td className="action-btns">
-                  {t.status === 'pending' && t.type === 'activation' && (
-                    <button className="btn-sm green" onClick={() => manualActivate(t.user_id)}>
-                      ✅ Manual Activate
+                  {t.status === 'pending' && (
+                    <button className="btn-sm green" onClick={() => completePayment(t.id, t.user_id, t.type)}>
+                      ✅ Complete
                     </button>
                   )}
                   {t.status === 'pending' && (
