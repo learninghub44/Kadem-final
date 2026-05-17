@@ -151,7 +151,7 @@ export const UploadPage = () => {
                     </div>
                 }
               </div>
-              <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={handlePhoto} style={{ display: 'none' }} />
+              <input ref={fileRef} type="file" accept="image/*" onChange={handlePhoto} style={{ display: 'none' }} />
               {photoFile && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
                   <small style={{ color: '#22c55e' }}>✅ {photoFile.name}</small>
