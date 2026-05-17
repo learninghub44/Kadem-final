@@ -5,7 +5,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
   LayoutDashboard, Users, CheckSquare, ArrowUpCircle,
-  Receipt, Tv, LogOut, CreditCard, Menu, X, Bell, RefreshCw
+  Receipt, Tv, LogOut, CreditCard, Menu, X, RefreshCw
 } from 'lucide-react';
 
 // ─── SIDEBAR NAV ────────────────────────────────────────────────────────────
