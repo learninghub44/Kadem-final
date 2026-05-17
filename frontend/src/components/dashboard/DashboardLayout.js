@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../../context/AuthContext';
 import {
   LayoutDashboard, Smartphone, Upload, Wallet, ArrowDownCircle,
   ArrowUpCircle, Package, Users, Receipt, User, LogOut, Menu, X, Shield
