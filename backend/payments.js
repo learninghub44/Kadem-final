@@ -12,30 +12,45 @@ const PACKAGES = {
   gold:    { price: 2999, multiplier: 3.0 },
 };
 
+// Activation fee
+const ACTIVATION_FEE = 550;
+
+// POST /api/payments/activate
 router.post('/activate', authenticate, async (req, res) => {
   try {
     const user = req.user;
     if (user.status === 'active') return res.status(400).json({ error: 'Account already active' });
 
     const reference = `ACT-${user.id.slice(0, 8)}-${Date.now()}`;
-    const result = await initiateSTKPush(user.phone, 550, reference, 'Kadem Account Activation');
+
+    let result;
+    try {
+      result = await initiateSTKPush(user.phone, ACTIVATION_FEE, reference, 'Kadem Account Activation');
+    } catch (payErr) {
+      console.error('PayHero STK error:', payErr.response?.data || payErr.message);
+      return res.status(502).json({
+        error: 'Payment gateway error. Please check your PayHero credentials.',
+        details: payErr.response?.data || payErr.message,
+      });
+    }
 
     await supabase.from('transactions').insert({
       user_id: user.id,
       type: 'activation',
-      amount: 550,
+      amount: ACTIVATION_FEE,
       status: 'pending',
       payhero_reference: reference,
       description: 'Account activation fee',
     });
 
-    res.json({ message: 'STK push sent. Enter M-Pesa PIN to complete.', reference, data: result });
+    res.json({ message: 'STK push sent to your phone. Enter M-Pesa PIN to complete.', reference, data: result });
   } catch (err) {
-    console.error('Activation error:', err.response?.data || err.message);
+    console.error('Activation error:', err);
     res.status(500).json({ error: 'Failed to initiate payment' });
   }
 });
 
+// POST /api/payments/buy-package
 router.post('/buy-package', authenticate, requireActive, async (req, res) => {
   try {
     const { package_name } = req.body;
@@ -44,7 +59,17 @@ router.post('/buy-package', authenticate, requireActive, async (req, res) => {
 
     const user = req.user;
     const reference = `PKG-${user.id.slice(0, 8)}-${Date.now()}`;
-    const result = await initiateSTKPush(user.phone, pkg.price, reference, `Kadem ${package_name} Package`);
+
+    let result;
+    try {
+      result = await initiateSTKPush(user.phone, pkg.price, reference, `Kadem ${package_name} Package`);
+    } catch (payErr) {
+      console.error('PayHero package error:', payErr.response?.data || payErr.message);
+      return res.status(502).json({
+        error: 'Payment gateway error.',
+        details: payErr.response?.data || payErr.message,
+      });
+    }
 
     await supabase.from('transactions').insert({
       user_id: user.id,
@@ -55,13 +80,14 @@ router.post('/buy-package', authenticate, requireActive, async (req, res) => {
       description: `${package_name} package purchase`,
     });
 
-    res.json({ message: 'STK push sent. Enter M-Pesa PIN.', reference, data: result });
+    res.json({ message: 'STK push sent. Enter your M-Pesa PIN.', reference, data: result });
   } catch (err) {
-    console.error('Buy package error:', err.response?.data || err.message);
+    console.error('Buy package error:', err);
     res.status(500).json({ error: 'Failed to initiate payment' });
   }
 });
 
+// POST /api/payments/deposit
 router.post('/deposit', authenticate, requireActive, async (req, res) => {
   try {
     const { amount } = req.body;
@@ -69,7 +95,14 @@ router.post('/deposit', authenticate, requireActive, async (req, res) => {
 
     const user = req.user;
     const reference = `DEP-${user.id.slice(0, 8)}-${Date.now()}`;
-    const result = await initiateSTKPush(user.phone, amount, reference, 'Kadem Wallet Deposit');
+
+    let result;
+    try {
+      result = await initiateSTKPush(user.phone, amount, reference, 'Kadem Wallet Deposit');
+    } catch (payErr) {
+      console.error('Deposit payment error:', payErr.response?.data || payErr.message);
+      return res.status(502).json({ error: 'Payment gateway error.', details: payErr.response?.data });
+    }
 
     await supabase.from('transactions').insert({
       user_id: user.id,
@@ -86,6 +119,7 @@ router.post('/deposit', authenticate, requireActive, async (req, res) => {
   }
 });
 
+// POST /api/payments/withdraw-request
 router.post('/withdraw-request', authenticate, requireActive, async (req, res) => {
   try {
     const { amount, phone } = req.body;
@@ -97,6 +131,7 @@ router.post('/withdraw-request', authenticate, requireActive, async (req, res) =
     if (amount < 1000) return res.status(400).json({ error: 'Minimum withdrawal is KES 1000' });
     if (user.wallet_balance < amount) return res.status(400).json({ error: 'Insufficient wallet balance' });
 
+    // Deduct balance and create pending withdrawal (admin must approve)
     await supabase.from('users').update({ wallet_balance: user.wallet_balance - amount }).eq('id', user.id);
 
     await supabase.from('withdrawals').insert({
@@ -111,18 +146,20 @@ router.post('/withdraw-request', authenticate, requireActive, async (req, res) =
       type: 'withdrawal',
       amount,
       status: 'pending',
-      description: 'Withdrawal request submitted',
+      description: 'Withdrawal request — awaiting admin approval',
     });
 
-    res.json({ message: 'Withdrawal request submitted. Admin will process within 24 hours.' });
+    res.json({ message: 'Withdrawal request submitted. Admin will review and process within 24 hours.' });
   } catch (err) {
     console.error('Withdraw error:', err);
     res.status(500).json({ error: 'Failed to submit withdrawal' });
   }
 });
 
+// POST /api/payments/callback — PayHero webhook
 router.post('/callback', async (req, res) => {
   try {
+    console.log('PayHero callback received:', JSON.stringify(req.body));
     const { external_reference, status, mpesa_receipt_number, amount } = req.body;
 
     if (!external_reference) return res.status(400).json({ error: 'Invalid callback' });
@@ -146,6 +183,7 @@ router.post('/callback', async (req, res) => {
 
     const { data: user } = await supabase.from('users').select('*').eq('id', txn.user_id).single();
 
+    // Handle activation
     if (txn.type === 'activation') {
       await supabase.from('users').update({ status: 'active' }).eq('id', user.id);
 
@@ -155,14 +193,17 @@ router.post('/callback', async (req, res) => {
           const bonus = Number(process.env.REFERRAL_ACTIVATION_BONUS || 100);
           await supabase.from('users').update({ wallet_balance: referrer.wallet_balance + bonus }).eq('id', referrer.id);
           await supabase.from('referral_earnings').insert({ referrer_id: referrer.id, referred_id: user.id, event: 'activation', amount: bonus });
-          await supabase.from('transactions').insert({ user_id: referrer.id, type: 'referral', amount: bonus, status: 'completed', description: `Referral bonus - ${user.full_name} activated` });
+          await supabase.from('transactions').insert({ user_id: referrer.id, type: 'referral', amount: bonus, status: 'completed', description: `Referral bonus — ${user.full_name} activated` });
         }
       }
     }
 
+    // Handle package purchase
     if (txn.type === 'package') {
-      const pkg_name = txn.description.split(' ')[0].toLowerCase();
-      if (PACKAGES[pkg_name]) {
+      const pkgMatch = txn.description.match(/^(\w+)\s+package/i);
+      const pkg_name = pkgMatch ? pkgMatch[1].toLowerCase() : null;
+
+      if (pkg_name && PACKAGES[pkg_name]) {
         await supabase.from('users').update({ package_level: pkg_name }).eq('id', user.id);
 
         if (user.referred_by) {
@@ -171,17 +212,18 @@ router.post('/callback', async (req, res) => {
             const bonus = Number(process.env.REFERRAL_PACKAGE_BONUS || 150);
             await supabase.from('users').update({ wallet_balance: referrer.wallet_balance + bonus }).eq('id', referrer.id);
             await supabase.from('referral_earnings').insert({ referrer_id: referrer.id, referred_id: user.id, event: 'package', amount: bonus });
-            await supabase.from('transactions').insert({ user_id: referrer.id, type: 'referral', amount: bonus, status: 'completed', description: `Referral bonus - ${user.full_name} bought ${pkg_name}` });
+            await supabase.from('transactions').insert({ user_id: referrer.id, type: 'referral', amount: bonus, status: 'completed', description: `Referral bonus — ${user.full_name} bought ${pkg_name}` });
           }
         }
       }
     }
 
+    // Handle deposit
     if (txn.type === 'deposit') {
       await supabase.from('users').update({ wallet_balance: user.wallet_balance + Number(amount) }).eq('id', user.id);
     }
 
-    res.json({ message: 'Callback processed' });
+    res.json({ message: 'Callback processed successfully' });
   } catch (err) {
     console.error('Callback error:', err);
     res.status(500).json({ error: 'Callback processing failed' });

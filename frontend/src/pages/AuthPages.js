@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -60,6 +59,7 @@ export const RegisterPage = () => {
     referral_code: searchParams.get('ref') || '',
   });
   const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
 
@@ -69,14 +69,47 @@ export const RegisterPage = () => {
     try {
       const res = await api.post('/auth/register', form);
       login(res.data.token, res.data.user);
-      toast.success('Account created! Activate your account to get started.');
-      navigate('/dashboard');
+      setSuccess(true);
     } catch (err) {
       toast.error(err.response?.data?.error || 'Registration failed');
     } finally {
       setLoading(false);
     }
   };
+
+  // Success modal — join WhatsApp channel
+  if (success) {
+    return (
+      <div className="auth-page">
+        <div className="auth-card" style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 48, marginBottom: 12 }}>🎉</div>
+          <h2 style={{ color: '#22c55e', marginBottom: 8 }}>Account Created!</h2>
+          <p style={{ marginBottom: 20, color: '#64748b' }}>
+            Welcome to Kadem! Join our WhatsApp channel to get the latest updates, tasks, and announcements.
+          </p>
+          <a
+            href="https://whatsapp.com/channel/0029VbD1tzELdQedEpwZ5841"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-primary"
+            style={{ display: 'block', background: '#25D366', marginBottom: 12, textDecoration: 'none' }}
+          >
+            📲 Join WhatsApp Channel
+          </a>
+          <button
+            className="btn-primary"
+            style={{ background: '#6366f1' }}
+            onClick={() => navigate('/dashboard')}
+          >
+            Go to Dashboard →
+          </button>
+          <p style={{ marginTop: 12, fontSize: 13, color: '#94a3b8' }}>
+            You can also join later from your dashboard.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="auth-page">

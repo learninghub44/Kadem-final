@@ -3,6 +3,7 @@ const router = express.Router();
 const supabase = require('./supabase');
 const { authenticate, requireActive } = require('./auth');
 
+// GET /api/tasks — List active tasks (requires active account)
 router.get('/', authenticate, requireActive, async (req, res) => {
   try {
     const { data: tasks, error } = await supabase
@@ -33,13 +34,15 @@ router.get('/', authenticate, requireActive, async (req, res) => {
   }
 });
 
+// POST /api/tasks/:taskId/submit — Submit WhatsApp views screenshot (photo file upload)
 router.post('/:taskId/submit', authenticate, requireActive, async (req, res) => {
   try {
     const { taskId } = req.params;
+    // screenshot_url = Supabase Storage public URL (uploaded from frontend)
     const { screenshot_url, views_count } = req.body;
 
     if (!screenshot_url || !views_count) {
-      return res.status(400).json({ error: 'Screenshot URL and views count required' });
+      return res.status(400).json({ error: 'Screenshot photo and views count are required' });
     }
     if (views_count < 1) return res.status(400).json({ error: 'Views count must be at least 1' });
 
@@ -52,7 +55,7 @@ router.post('/:taskId/submit', authenticate, requireActive, async (req, res) => 
       .eq('user_id', req.user.id)
       .eq('task_id', taskId)
       .maybeSingle();
-    if (existing) return res.status(409).json({ error: 'Already submitted for this task' });
+    if (existing) return res.status(409).json({ error: 'You have already submitted for this task' });
 
     const MULTIPLIERS = { none: 1, starter: 1, bronze: 1.5, silver: 2, gold: 3 };
     const multiplier = MULTIPLIERS[req.user.package_level] || 1;
@@ -83,6 +86,7 @@ router.post('/:taskId/submit', authenticate, requireActive, async (req, res) => 
   }
 });
 
+// GET /api/tasks/my-submissions
 router.get('/my-submissions', authenticate, async (req, res) => {
   try {
     const { data, error } = await supabase

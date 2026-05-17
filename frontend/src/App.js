@@ -11,7 +11,7 @@ import {
 } from './pages/UserPages';
 import {
   AdminLayout, AdminOverview, AdminUsers, AdminTasks,
-  AdminSubmissions, AdminWithdrawals, AdminTransactions
+  AdminSubmissions, AdminPayments, AdminWithdrawals, AdminTransactions
 } from './pages/AdminPages';
 import './styles.css';
 
@@ -57,6 +57,7 @@ function AppRoutes() {
         <Route path="users" element={<AdminUsers />} />
         <Route path="tasks" element={<AdminTasks />} />
         <Route path="submissions" element={<AdminSubmissions />} />
+        <Route path="payments" element={<AdminPayments />} />
         <Route path="withdrawals" element={<AdminWithdrawals />} />
         <Route path="transactions" element={<AdminTransactions />} />
       </Route>
