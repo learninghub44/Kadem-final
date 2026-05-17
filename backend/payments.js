@@ -14,12 +14,12 @@ const PACKAGES = {
 
 const friendlyError = (errMsg) => {
   const msg = (errMsg || '').toLowerCase();
+  if (msg.includes('allowlist') || msg.includes('whitelist'))
+    return 'Payment gateway not configured. Please contact support on WhatsApp: 0742791838';
   if (msg.includes('insufficient') || msg.includes('balance'))
     return 'Payment service temporarily unavailable. Contact support: 0742791838';
   if (msg.includes('invalid phone') || msg.includes('phone'))
     return 'Invalid phone number. Please update your profile with a valid M-Pesa number.';
-  if (msg.includes('unauthorized') || msg.includes('401') || msg.includes('403'))
-    return 'Payment gateway error. Please contact support.';
   if (msg.includes('timeout') || msg.includes('econnrefused') || msg.includes('network'))
     return 'Payment service unreachable. Please try again in a moment.';
   return 'Payment failed. Please try again or contact support on WhatsApp: 0742791838';
@@ -110,8 +110,6 @@ router.post('/withdraw-request', authenticate, requireActive, async (req, res) =
     const { amount, phone } = req.body;
     const user = req.user;
 
-    if (!['silver', 'gold'].includes(user.package_level))
-      return res.status(403).json({ error: 'Withdrawals require Silver or Gold package' });
     if (!amount || Number(amount) < 1000)
       return res.status(400).json({ error: 'Minimum withdrawal is KES 1,000' });
     if (Number(user.wallet_balance) < Number(amount))

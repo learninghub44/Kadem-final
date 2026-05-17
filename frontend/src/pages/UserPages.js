@@ -77,7 +77,8 @@ export const TasksPage = () => {
 // ── UPLOAD PAGE ────────────────────────────────────────────────
 export const UploadPage = () => {
   const [tasks, setTasks] = useState([]);
-  const [form, setForm] = useState({ task_id: '', views_count: '' });
+  const [taskId, setTaskId] = useState('');
+  const [views, setViews] = useState('');
   const [photoFile, setPhotoFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -87,7 +88,7 @@ export const UploadPage = () => {
     api.get('/tasks').then(r => {
       const available = r.data.tasks.filter(t => !t.my_submission || t.my_submission.status === 'rejected');
       setTasks(available);
-      if (available.length) setForm(f => ({ ...f, task_id: available[0].id }));
+      if (available.length) setTaskId(available[0].id);
     }).catch(() => {});
   }, []);
 
@@ -103,7 +104,7 @@ export const UploadPage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!photoFile) { toast.error('Please select a screenshot photo'); return; }
-    if (!form.task_id) { toast.error('Please select a task'); return; }
+    if (!views || parseInt(views) < 1) { toast.error('Enter the number of views'); return; }
     setLoading(true);
     try {
       const base64 = await new Promise((res, rej) => {
@@ -112,13 +113,14 @@ export const UploadPage = () => {
         reader.onerror = rej;
         reader.readAsDataURL(photoFile);
       });
-      const resp = await api.post(`/tasks/${form.task_id}/submit`, {
+      const tid = taskId || (tasks[0]?.id);
+      const resp = await api.post(`/tasks/${tid}/submit`, {
         screenshot_base64: base64,
         screenshot_mime: photoFile.type,
-        views_count: parseInt(form.views_count),
+        views_count: parseInt(views),
       });
       toast.success(`✅ Submitted! Potential earning: KES ${resp.data.potential_earning}`);
-      setForm(f => ({ ...f, views_count: '' }));
+      setViews('');
       setPhotoFile(null);
       setPreview(null);
       if (fileRef.current) fileRef.current.value = '';
@@ -137,13 +139,6 @@ export const UploadPage = () => {
         </div>
         <div className="form-card" style={{ maxWidth: '100%' }}>
           <form onSubmit={handleSubmit}>
-            <div className="form-group">
-              <label>Select Task</label>
-              <select value={form.task_id} onChange={e => setForm({ ...form, task_id: e.target.value })} required>
-                {tasks.length === 0 && <option value="">No tasks available</option>}
-                {tasks.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
-              </select>
-            </div>
             <div className="form-group">
               <label>Screenshot Photo <span style={{ color: '#ef4444' }}>*</span></label>
               <div className="photo-upload-area" onClick={() => fileRef.current?.click()}>
@@ -166,10 +161,10 @@ export const UploadPage = () => {
             </div>
             <div className="form-group">
               <label>Number of Views in Screenshot</label>
-              <input type="number" min="1" max="10000" placeholder="e.g. 150" value={form.views_count} onChange={e => setForm({ ...form, views_count: e.target.value })} required />
+              <input type="number" min="1" max="10000" placeholder="e.g. 150" value={views} onChange={e => setViews(e.target.value)} required />
               <small style={{ color: '#64748b' }}>Enter the exact views count shown in your screenshot.</small>
             </div>
-            <button type="submit" className="btn-primary" disabled={loading || !tasks.length || !photoFile}>
+            <button type="submit" className="btn-primary" disabled={loading || !photoFile}>
               {loading ? '⏳ Uploading...' : '📤 Submit for Review'}
             </button>
           </form>
@@ -272,7 +267,7 @@ export const WithdrawPage = () => {
   }, []);
   useEffect(() => { loadWithdrawals(); }, [loadWithdrawals]);
 
-  const canWithdraw = ['silver', 'gold'].includes(user?.package_level) && user?.status === 'active';
+  const canWithdraw = user?.status === 'active';
 
   const handleWithdraw = async (e) => {
     e.preventDefault();
@@ -290,7 +285,7 @@ export const WithdrawPage = () => {
   return (
     <div className="page">
       <h1 className="page-title">Withdraw Earnings</h1>
-      {!canWithdraw && <div className="info-banner">ℹ️ Withdrawals require <strong>Silver or Gold package</strong> and an active account.</div>}
+      {!canWithdraw && <div className="info-banner">ℹ️ Activate your account to request withdrawals.</div>}
       {canWithdraw && (
         <div className="form-card" style={{ maxWidth: '100%' }}>
           <p className="balance-hint">Available: <strong>KES {Number(user?.wallet_balance || 0).toLocaleString()}</strong></p>
