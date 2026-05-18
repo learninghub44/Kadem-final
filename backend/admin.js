@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const supabase = require('./supabase');
 const { authenticate, requireAdmin } = require('./auth');
-const { initiateWithdrawal } = require('./intasend');
+const { initiateWithdrawal } = require('./payhero');
 
 router.use(authenticate, requireAdmin);
 
