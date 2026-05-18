@@ -5,7 +5,7 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 
 // Validate required env vars at startup
-const required = ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'JWT_SECRET'];
+const required = ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'JWT_SECRET', 'PAYHERO_BASIC_AUTH', 'PAYHERO_CHANNEL_ID', 'PAYHERO_CALLBACK_URL'];
 const missing = required.filter(k => !process.env[k]);
 if (missing.length) {
   console.error('FATAL: Missing env vars:', missing.join(', '));
