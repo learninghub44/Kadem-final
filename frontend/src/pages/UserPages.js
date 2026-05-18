@@ -267,14 +267,18 @@ export const WithdrawPage = () => {
   }, []);
   useEffect(() => { loadWithdrawals(); }, [loadWithdrawals]);
 
-  const canWithdraw = user?.status === 'active';
+  const balance = Number(user?.wallet_balance || 0);
+  const isActive = user?.status === 'active';
+  const hasSilverGold = ['silver', 'gold'].includes(user?.package_level);
 
   const handleWithdraw = async (e) => {
     e.preventDefault();
+    if (balance <= 0) { toast.error('Your wallet is empty. Complete tasks to earn first.'); return; }
+    if (Number(form.amount) > balance) { toast.error('Amount exceeds your available balance of KES ' + balance.toLocaleString()); return; }
     setLoading(true);
     try {
       await api.post('/payments/withdraw-request', { amount: Number(form.amount), phone: form.phone });
-      toast.success('Withdrawal request submitted! Processing within 24 hours.');
+      toast.success('✅ Withdrawal submitted! Admin will process within 24 hours.');
       setForm(f => ({ ...f, amount: '' }));
       loadWithdrawals();
     } catch (err) {
@@ -285,8 +289,8 @@ export const WithdrawPage = () => {
   return (
     <div className="page">
       <h1 className="page-title">Withdraw Earnings</h1>
-      {!canWithdraw && <div className="info-banner">ℹ️ Activate your account to request withdrawals.</div>}
-      {canWithdraw && (
+      {!isActive && <div className="info-banner">ℹ️ Activate your account to request withdrawals.</div>}
+      {isActive && (
         <div className="form-card" style={{ maxWidth: '100%' }}>
           <p className="balance-hint">Available: <strong>KES {Number(user?.wallet_balance || 0).toLocaleString()}</strong></p>
           <form onSubmit={handleWithdraw}>

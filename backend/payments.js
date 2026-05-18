@@ -99,14 +99,23 @@ router.post('/withdraw-request', authenticate, requireActive, async (req, res) =
     const amt = Number(amount);
 
     // Validations
-    if (!['silver', 'gold'].includes(user.package_level))
-      return res.status(403).json({ error: 'Withdrawals require Silver or Gold package' });
+    // Eligibility: Silver/Gold package OR 3+ referrals
+    const hasSilverGold = ['silver', 'gold'].includes(user.package_level);
+    if (!hasSilverGold) {
+      const { count } = await supabase
+        .from('users').select('id', { count: 'exact', head: true })
+        .eq('referred_by', user.referral_code);
+      if ((count || 0) < 3)
+        return res.status(403).json({ error: 'You need Silver/Gold package OR 3+ referrals to withdraw.' });
+    }
     if (!amt || amt < 1000)
       return res.status(400).json({ error: 'Minimum withdrawal is KES 1,000' });
     if (amt > 100000)
       return res.status(400).json({ error: 'Maximum single withdrawal is KES 100,000' });
+    if (Number(user.wallet_balance) <= 0)
+      return res.status(400).json({ error: 'Your wallet balance is KES 0. Complete tasks to earn first.' });
     if (Number(user.wallet_balance) < amt)
-      return res.status(400).json({ error: 'Insufficient wallet balance' });
+      return res.status(400).json({ error: `Insufficient balance. You have KES ${Number(user.wallet_balance).toLocaleString()} available.` });
     if (!phone || !/^(07|01)\d{8}$/.test(phone.trim()))
       return res.status(400).json({ error: 'Enter a valid Kenyan M-Pesa number (07XXXXXXXX)' });
 
