@@ -696,17 +696,23 @@ export const AdminWithdrawals = () => {
     try {
       let admin_note = '';
       if (action === 'reject') {
-        admin_note = window.prompt('Reason for rejection (refund will be sent to user):') || '';
+        admin_note = window.prompt('Rejection reason (amount will be refunded to user):') || '';
+      } else if (action === 'mark_paid') {
+        admin_note = window.prompt('Enter M-Pesa code or note:') || 'Paid manually';
       }
       await api.patch(`/admin/withdrawals/${id}`, { action, admin_note });
-      if (action === 'approve') {
-        toast.success('✅ Approved! M-Pesa payout sent to user.');
-      } else {
-        toast.success('❌ Rejected. Amount refunded to user wallet.');
-      }
+      const msgs = {
+        approve: '✅ M-Pesa payout sent via PayHero!',
+        mark_paid: '✅ Marked as paid manually',
+        reject: '❌ Rejected — amount refunded to user wallet',
+      };
+      toast.success(msgs[action]);
       load();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to process');
+      const errMsg = err.response?.data?.error || 'Failed to process';
+      const hint = err.response?.data?.hint || '';
+      toast.error(errMsg, { duration: 6000 });
+      if (hint) setTimeout(() => toast(hint, { icon: 'ℹ️' }), 500);
     } finally {
       setProcessing(null);
     }
@@ -763,22 +769,17 @@ export const AdminWithdrawals = () => {
                   <td style={{ fontSize: '0.8rem', color: '#94a3b8', maxWidth: 140 }}>{w.admin_note || '—'}</td>
                   <td className="action-btns">
                     {w.status === 'pending' ? (
-                      <>
-                        <button
-                          className="btn-sm green"
-                          onClick={() => handleWithdrawal(w.id, 'approve')}
-                          disabled={processing === w.id}
-                        >
-                          {processing === w.id ? '⏳...' : '✅ Approve & Pay'}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                        <button className="btn-sm green" onClick={() => handleWithdrawal(w.id, 'approve')} disabled={!!processing} title="Auto-pay via PayHero">
+                          {processing === w.id ? '⏳...' : '📲 Pay via M-Pesa'}
                         </button>
-                        <button
-                          className="btn-sm red"
-                          onClick={() => handleWithdrawal(w.id, 'reject')}
-                          disabled={processing === w.id}
-                        >
+                        <button className="btn-sm" style={{ borderColor: '#3b82f6', color: '#3b82f6' }} onClick={() => handleWithdrawal(w.id, 'mark_paid')} disabled={!!processing} title="You sent M-Pesa manually">
+                          ✅ Mark Paid
+                        </button>
+                        <button className="btn-sm red" onClick={() => handleWithdrawal(w.id, 'reject')} disabled={!!processing}>
                           ❌ Reject
                         </button>
-                      </>
+                      </div>
                     ) : (
                       <span className={`badge ${w.status}`}>{w.status}</span>
                     )}

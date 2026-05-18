@@ -3,9 +3,11 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const hpp = require('hpp');
 
-// Validate required env vars at startup
-const required = ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'JWT_SECRET', 'PAYHERO_BASIC_AUTH', 'PAYHERO_CHANNEL_ID', 'PAYHERO_CALLBACK_URL'];
+// ── Startup env validation ────────────────────────────────────
+const required = ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'JWT_SECRET',
+  'PAYHERO_BASIC_AUTH', 'PAYHERO_CHANNEL_ID', 'PAYHERO_CALLBACK_URL'];
 const missing = required.filter(k => !process.env[k]);
 if (missing.length) {
   console.error('FATAL: Missing env vars:', missing.join(', '));
@@ -14,57 +16,121 @@ if (missing.length) {
 
 const app = express();
 
-// Trust Render's proxy (fixes express-rate-limit X-Forwarded-For warning)
+// Trust Render proxy
 app.set('trust proxy', 1);
 
-// Security headers
+// ── Security headers ──────────────────────────────────────────
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", 'data:', 'https:'],
+      connectSrc: ["'self'"],
+    },
+  },
 }));
 
-// CORS - strict in production
-const allowedOrigins = process.env.FRONTEND_URL
-  ? [process.env.FRONTEND_URL.replace(/\/$/, '')]
-  : ['http://localhost:3000'];
+// ── CORS — strict origin matching ────────────────────────────
+const allowedOrigins = (process.env.FRONTEND_URL || '')
+  .split(',')
+  .map(o => o.trim().replace(/\/$/, ''))
+  .filter(Boolean);
+if (!allowedOrigins.length) allowedOrigins.push('http://localhost:3000');
 
 app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
-    callback(new Error('CORS: Not allowed'));
+  origin: (origin, cb) => {
+    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+    console.warn('CORS blocked origin:', origin);
+    cb(new Error('CORS: Not allowed'));
   },
   credentials: true,
+  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
-// Body parsing with size limits
-app.use(express.json({ limit: '10mb' })); // 10mb for base64 photo uploads
+// ── Body parsing with size limits ─────────────────────────────
+app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Global rate limiter
-app.use('/api/', rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 200,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Too many requests. Please slow down.' },
-}));
+// ── HTTP Parameter Pollution protection ───────────────────────
+app.use(hpp());
 
-// Routes
+// ── Input sanitization — strip $ and . from keys (NoSQL injection) ──
+app.use((req, res, next) => {
+  const sanitize = (obj) => {
+    if (!obj || typeof obj !== 'object') return;
+    Object.keys(obj).forEach(key => {
+      if (/[$.]/.test(key)) {
+        delete obj[key];
+      } else {
+        sanitize(obj[key]);
+      }
+    });
+  };
+  sanitize(req.body);
+  sanitize(req.query);
+  sanitize(req.params);
+  next();
+});
+
+// ── Rate limiters ─────────────────────────────────────────────
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: 300,
+  standardHeaders: true, legacyHeaders: false,
+  message: { error: 'Too many requests. Please slow down.' },
+  skip: (req) => req.path === '/health',
+});
+
+const paymentLimiter = rateLimit({
+  windowMs: 60 * 1000, max: 5, // 5 payment attempts per minute
+  standardHeaders: true, legacyHeaders: false,
+  message: { error: 'Too many payment requests. Please wait a moment.' },
+});
+
+const callbackLimiter = rateLimit({
+  windowMs: 60 * 1000, max: 100, // PayHero retries
+  standardHeaders: true, legacyHeaders: false,
+});
+
+app.use('/api/', globalLimiter);
+app.use('/api/payments/activate', paymentLimiter);
+app.use('/api/payments/buy-package', paymentLimiter);
+app.use('/api/payments/deposit', paymentLimiter);
+app.use('/api/payments/callback', callbackLimiter);
+
+// ── Webhook secret verification for PayHero callback ─────────
+app.use('/api/payments/callback', (req, res, next) => {
+  // Allow if no secret configured (backwards compat)
+  const secret = process.env.PAYHERO_WEBHOOK_SECRET;
+  if (!secret) return next();
+  const incoming = req.headers['x-webhook-secret'] || req.headers['x-payhero-secret'];
+  if (incoming !== secret) {
+    console.warn('[Webhook] Invalid secret from:', req.ip);
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  next();
+});
+
+// ── Routes ────────────────────────────────────────────────────
 app.use('/api/auth', require('./routes-auth'));
 app.use('/api/payments', require('./payments'));
 app.use('/api/tasks', require('./tasks'));
 app.use('/api/user', require('./user'));
 app.use('/api/admin', require('./admin'));
 
-// Health check
+// ── Health check ──────────────────────────────────────────────
 app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
-// 404
+// ── 404 ───────────────────────────────────────────────────────
 app.use((req, res) => res.status(404).json({ error: 'Route not found' }));
 
-// Global error handler
+// ── Global error handler ──────────────────────────────────────
 app.use((err, req, res, next) => {
+  if (err.message?.includes('CORS')) return res.status(403).json({ error: 'CORS policy blocked this request' });
   console.error('Unhandled error:', err.message);
-  if (err.message?.includes('CORS')) return res.status(403).json({ error: 'CORS error' });
   res.status(500).json({ error: 'Internal server error' });
 });
 

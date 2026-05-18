@@ -183,25 +183,44 @@ router.patch('/withdrawals/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const { action, admin_note } = req.body;
-    if (!['approve', 'reject'].includes(action))
-      return res.status(400).json({ error: 'Action must be approve or reject' });
+    if (!['approve', 'reject', 'mark_paid'].includes(action))
+      return res.status(400).json({ error: 'Action must be approve, reject, or mark_paid' });
 
     const { data: withdrawal } = await supabase.from('withdrawals').select('*, users(*)').eq('id', id).maybeSingle();
     if (!withdrawal) return res.status(404).json({ error: 'Withdrawal not found' });
     if (withdrawal.status !== 'pending') return res.status(400).json({ error: 'Withdrawal already processed' });
 
     if (action === 'approve') {
+      // Admin manually sends M-Pesa — then marks as paid here
       const reference = `WD-${id.slice(0, 8)}-${Date.now()}`;
       try {
         await initiateWithdrawal(withdrawal.phone, withdrawal.amount, reference);
       } catch (payErr) {
-        console.error('Withdrawal payout error:', payErr.response?.data || payErr.message);
-        return res.status(502).json({ error: 'M-Pesa payout failed. Withdrawal not processed.', details: payErr.response?.data });
+        console.error('[Admin Withdrawal] PayHero error:', payErr.message);
+        // Still allow admin to mark as paid manually if payout was done outside system
+        // Return error so admin knows
+        return res.status(502).json({
+          error: 'M-Pesa payout via PayHero failed: ' + payErr.message,
+          hint: 'If you sent M-Pesa manually, use the "Mark Paid Manually" option instead.'
+        });
       }
-      await supabase.from('withdrawals').update({ status: 'paid', admin_note: admin_note || null, processed_at: new Date().toISOString() }).eq('id', id);
+      await supabase.from('withdrawals').update({
+        status: 'paid', admin_note: admin_note || null,
+        processed_at: new Date().toISOString(),
+        payhero_reference: reference,
+      }).eq('id', id);
       await supabase.from('transactions').update({ status: 'completed' })
         .eq('user_id', withdrawal.user_id).eq('type', 'withdrawal').eq('status', 'pending');
-      res.json({ message: 'Withdrawal approved — M-Pesa payout sent' });
+      res.json({ message: 'Withdrawal approved — M-Pesa payout sent via PayHero' });
+    } else if (action === 'mark_paid') {
+      // Admin sent M-Pesa manually outside system
+      await supabase.from('withdrawals').update({
+        status: 'paid', admin_note: admin_note || 'Paid manually',
+        processed_at: new Date().toISOString(),
+      }).eq('id', id);
+      await supabase.from('transactions').update({ status: 'completed' })
+        .eq('user_id', withdrawal.user_id).eq('type', 'withdrawal').eq('status', 'pending');
+      res.json({ message: 'Withdrawal marked as paid manually' });
     } else {
       // Refund wallet
       await supabase.from('users').update({
