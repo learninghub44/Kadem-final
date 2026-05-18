@@ -292,7 +292,7 @@ export const WithdrawPage = () => {
           <form onSubmit={handleWithdraw}>
             <div className="form-group">
               <label>Amount (min KES 1,000)</label>
-              <input type="number" min="1000" max={user?.wallet_balance} value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} required />
+              <input type="number" min="1000" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} placeholder="e.g. 1000" required />
             </div>
             <div className="form-group">
               <label>M-Pesa Phone Number</label>
