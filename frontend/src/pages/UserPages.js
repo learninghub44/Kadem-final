@@ -269,7 +269,6 @@ export const WithdrawPage = () => {
 
   const balance = Number(user?.wallet_balance || 0);
   const isActive = user?.status === 'active';
-  const hasSilverGold = ['silver', 'gold'].includes(user?.package_level);
 
   const handleWithdraw = async (e) => {
     e.preventDefault();
