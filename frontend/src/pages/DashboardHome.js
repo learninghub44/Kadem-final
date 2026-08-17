@@ -91,111 +91,101 @@ const ActivationScreen = ({ user }) => {
 
   return (
     <div style={{
-      minHeight: '100vh',
-      height: '100%',
+      height: '100vh',
+      height: '100dvh',
+      background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+      boxSizing: 'border-box',
       display: 'flex',
       flexDirection: 'column',
-      padding: 0,
-      boxSizing: 'border-box',
+      alignItems: 'center',
+      padding: '0 16px',
+      paddingTop: 'clamp(24px, 6vh, 48px)',
       overflowY: 'auto',
     }}>
+      <button
+        onClick={() => { logout(); }}
+        style={{
+          position: 'fixed', top: 12, right: 16,
+          background: 'none', border: 'none',
+          color: '#64748b', cursor: 'pointer', fontSize: '0.8rem',
+          zIndex: 10,
+        }}
+      >
+        Logout
+      </button>
       <div style={{
-        background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
-        border: 'none',
-        borderRadius: 0,
-        padding: 'clamp(20px, 4vh, 32px)',
-        textAlign: 'center',
-        maxWidth: 'none',
-        width: '100%',
-        minHeight: '100vh',
-        boxSizing: 'border-box',
+        width: 64,
+        height: 64,
+        borderRadius: '50%',
+        background: 'rgba(245, 158, 11, 0.15)',
         display: 'flex',
-        flexDirection: 'column',
         alignItems: 'center',
-        justifyContent: 'flex-start',
+        justifyContent: 'center',
+        marginBottom: 14,
       }}>
-        <button
-          onClick={() => { logout(); }}
-          style={{
-            position: 'absolute', top: 12, right: 14,
-            background: 'none', border: 'none',
-            color: '#64748b', cursor: 'pointer', fontSize: '0.8rem',
-          }}
-        >
-          Logout
-        </button>
-        <div style={{
-          width: 64,
-          height: 64,
-          borderRadius: '50%',
-          background: 'rgba(245, 158, 11, 0.15)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          margin: '0 auto 14px',
-        }}>
-          <Lock size={32} color="#f59e0b" />
-        </div>
+        <Lock size={32} color="#f59e0b" />
+      </div>
 
-        <h1 style={{ color: '#f59e0b', fontSize: '1.35rem', marginBottom: 6 }}>
-          Activate Your Account
-        </h1>
-        <p style={{ color: '#94a3b8', marginBottom: 6, fontSize: '0.9rem' }}>
-          Pay a one-time fee to unlock all features.
-        </p>
-        <div style={{
-          fontSize: 'clamp(1.8rem, 7vw, 2.2rem)',
-          fontWeight: 800,
-          color: '#fff',
-          margin: '14px 0',
-          fontFamily: 'Sora, sans-serif',
-        }}>
-          KES 150
-        </div>
+      <h1 style={{ color: '#f59e0b', fontSize: '1.35rem', marginBottom: 6 }}>
+        Activate Your Account
+      </h1>
+      <p style={{ color: '#94a3b8', marginBottom: 6, fontSize: '0.9rem' }}>
+        Pay a one-time fee to unlock all features.
+      </p>
+      <div style={{
+        fontSize: 'clamp(1.8rem, 7vw, 2.2rem)',
+        fontWeight: 800,
+        color: '#fff',
+        margin: '14px 0',
+        fontFamily: 'Sora, sans-serif',
+      }}>
+        KES 150
+      </div>
 
-        <div style={{ marginBottom: 16 }}>
-          <label style={{ display: 'block', textAlign: 'left', color: '#94a3b8', marginBottom: 6, fontSize: '0.85rem' }}>
-            M-Pesa Phone Number
-          </label>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Smartphone size={18} color="#64748b" />
-            <input
-              type="tel"
-              value={phone}
-              onChange={e => setPhone(e.target.value)}
-              placeholder="0712345678"
-              disabled={waiting}
-              style={{
-                flex: 1,
-                minWidth: 0,
-                padding: '12px 14px',
-                borderRadius: 10,
-                border: '1px solid #334155',
-                background: '#0f172a',
-                color: '#fff',
-                fontSize: '1rem',
-                outline: 'none',
-              }}
-            />
-          </div>
+      <div style={{ width: '100%', maxWidth: 380, marginBottom: 16 }}>
+        <label style={{ display: 'block', textAlign: 'left', color: '#94a3b8', marginBottom: 6, fontSize: '0.85rem' }}>
+          M-Pesa Phone Number
+        </label>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Smartphone size={18} color="#64748b" />
+          <input
+            type="tel"
+            value={phone}
+            onChange={e => setPhone(e.target.value)}
+            placeholder="0712345678"
+            disabled={waiting}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              padding: '12px 14px',
+              borderRadius: 10,
+              border: '1px solid #334155',
+              background: '#0f172a',
+              color: '#fff',
+              fontSize: '1rem',
+              outline: 'none',
+            }}
+          />
         </div>
+      </div>
 
-        <button
-          onClick={handleActivate}
-          disabled={waiting}
-          style={{
-            width: '100%',
-            padding: '14px 0',
-            borderRadius: 12,
-            border: 'none',
-            background: waiting ? '#92400e' : '#f59e0b',
-            color: waiting ? '#fde68a' : '#000',
-            fontSize: '1rem',
-            fontWeight: 700,
-            cursor: waiting ? 'not-allowed' : 'pointer',
-            transition: 'all 0.2s',
-          }}
-        >
+      <button
+        onClick={handleActivate}
+        disabled={waiting}
+        style={{
+          width: '100%',
+          maxWidth: 380,
+          padding: '14px 0',
+          borderRadius: 12,
+          border: 'none',
+          background: waiting ? '#92400e' : '#f59e0b',
+          color: waiting ? '#fde68a' : '#000',
+          fontSize: '1rem',
+          fontWeight: 700,
+          cursor: waiting ? 'not-allowed' : 'pointer',
+          transition: 'all 0.2s',
+        }}
+      >
           {phase === 'sending'
             ? 'Sending STK Push...'
             : phase === 'waiting'
@@ -237,7 +227,6 @@ const ActivationScreen = ({ user }) => {
             <br />Enter your PIN to complete payment.
           </p>
         )}
-      </div>
     </div>
   );
 };
