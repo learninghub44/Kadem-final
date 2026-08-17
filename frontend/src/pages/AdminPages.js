@@ -97,12 +97,12 @@ export const AdminOverview = () => {
   if (loading) return <div className="loading">Loading overview...</div>;
 
   const cards = [
-    { label: 'Total Users', value: stats?.totalUsers || 0, color: '#6366f1', icon: '👥' },
-    { label: 'Active Users', value: stats?.activeUsers || 0, color: '#22c55e', icon: '✅' },
-    { label: 'Pending Submissions', value: stats?.pendingSubmissions || 0, color: '#f59e0b', icon: '⏳' },
-    { label: 'Pending Withdrawals', value: stats?.pendingWithdrawals || 0, color: '#ef4444', icon: '💸' },
-    { label: 'Total Paid Out', value: `KES ${Number(stats?.totalPaid || 0).toLocaleString()}`, color: '#3b82f6', icon: '💰' },
-    { label: 'Total Revenue', value: `KES ${Number(stats?.totalRevenue || 0).toLocaleString()}`, color: '#8b5cf6', icon: '📈' },
+    { label: 'Total Users', value: stats?.totalUsers || 0, color: '#6366f1' },
+    { label: 'Active Users', value: stats?.activeUsers || 0, color: '#22c55e' },
+    { label: 'Pending Submissions', value: stats?.pendingSubmissions || 0, color: '#f59e0b' },
+    { label: 'Pending Withdrawals', value: stats?.pendingWithdrawals || 0, color: '#ef4444' },
+    { label: 'Total Paid Out', value: `KES ${Number(stats?.totalPaid || 0).toLocaleString()}`, color: '#3b82f6' },
+    { label: 'Total Revenue', value: `KES ${Number(stats?.totalRevenue || 0).toLocaleString()}`, color: '#8b5cf6' },
   ];
 
   return (
@@ -116,7 +116,6 @@ export const AdminOverview = () => {
       <div className="stats-grid">
         {cards.map(c => (
           <div key={c.label} className="stat-card" style={{ borderLeft: `3px solid ${c.color}` }}>
-            <span style={{ fontSize: 24 }}>{c.icon}</span>
             <div>
               <p className="stat-label">{c.label}</p>
               <h3 style={{ color: c.color, fontFamily: 'Sora', fontWeight: 700 }}>{c.value}</h3>
@@ -129,12 +128,12 @@ export const AdminOverview = () => {
         <h2 style={{ marginBottom: 16, fontSize: '1.1rem' }}>Quick Links</h2>
         <div className="actions-grid">
           {[
-            { label: '⏳ Review Submissions', to: '/admin/submissions' },
-            { label: '💸 Process Withdrawals', to: '/admin/withdrawals' },
-            { label: '📋 Post New Task', to: '/admin/tasks' },
-            { label: '👥 Manage Users', to: '/admin/users' },
-            { label: '💳 Check Payments', to: '/admin/payments' },
-            { label: '📊 All Transactions', to: '/admin/transactions' },
+            { label: 'Review Submissions', to: '/admin/submissions' },
+            { label: 'Process Withdrawals', to: '/admin/withdrawals' },
+            { label: 'Post New Task', to: '/admin/tasks' },
+            { label: 'Manage Users', to: '/admin/users' },
+            { label: 'Check Payments', to: '/admin/payments' },
+            { label: 'All Transactions', to: '/admin/transactions' },
           ].map(l => (
             <NavLink key={l.to} to={l.to} className="action-card" style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
               {l.label}
@@ -222,7 +221,7 @@ export const AdminUsers = () => {
             <button onClick={() => setSelectedUser(null)} style={{
               position: 'absolute', top: 16, right: 16, background: 'none',
               border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 20
-            }}>✕</button>
+            }}>X</button>
             <h2 style={{ marginBottom: 20 }}>{selectedUser.full_name}</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20, fontSize: '0.9rem' }}>
               {[
@@ -244,17 +243,17 @@ export const AdminUsers = () => {
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {selectedUser.status !== 'active' && (
-                <button className="btn-sm green" onClick={() => update(selectedUser.id, { status: 'active' }, '✅ User activated')}>Activate</button>
+                <button className="btn-sm green" onClick={() => update(selectedUser.id, { status: 'active' }, 'User activated')}>Activate</button>
               )}
               {selectedUser.status === 'active' && (
-                <button className="btn-sm red" onClick={() => update(selectedUser.id, { status: 'suspended' }, '🔒 User suspended')}>Suspend</button>
+                <button className="btn-sm red" onClick={() => update(selectedUser.id, { status: 'suspended' }, 'User suspended')}>Suspend</button>
               )}
               {selectedUser.status === 'suspended' && (
                 <button className="btn-sm" onClick={() => update(selectedUser.id, { status: 'inactive' }, 'User restored')}>Restore</button>
               )}
               {selectedUser.role !== 'admin' && (
                 <button className="btn-sm" style={{ color: '#f59e0b', borderColor: '#f59e0b' }}
-                  onClick={() => { if (window.confirm('Make this user an admin?')) update(selectedUser.id, { role: 'admin' }, '⭐ User is now admin'); }}>
+                  onClick={() => { if (window.confirm('Make this user an admin?')) update(selectedUser.id, { role: 'admin' }, 'User is now admin'); }}>
                   Make Admin
                 </button>
               )}
@@ -306,8 +305,8 @@ export const AdminUsers = () => {
                   <td style={{ fontSize: '0.8rem' }}>{new Date(u.created_at).toLocaleDateString()}</td>
                   <td className="action-btns">
                     <button className="btn-sm" onClick={() => setSelectedUser(u)}>View</button>
-                    {u.status !== 'active' && <button className="btn-sm green" onClick={() => update(u.id, { status: 'active' }, '✅ Activated')}>Activate</button>}
-                    {u.status === 'active' && <button className="btn-sm red" onClick={() => update(u.id, { status: 'suspended' }, '🔒 Suspended')}>Suspend</button>}
+                    {u.status !== 'active' && <button className="btn-sm green" onClick={() => update(u.id, { status: 'active' }, 'Activated')}>Activate</button>}
+                    {u.status === 'active' && <button className="btn-sm red" onClick={() => update(u.id, { status: 'suspended' }, 'Suspended')}>Suspend</button>}
                   </td>
                 </tr>
               ))}
@@ -338,11 +337,11 @@ export const AdminTasks = () => {
     try {
       if (editing) {
         await api.patch(`/admin/tasks/${editing}`, form);
-        toast.success('✅ Task updated');
+        toast.success('Task updated');
         setEditing(null);
       } else {
         await api.post('/admin/tasks', form);
-        toast.success('✅ Task created');
+        toast.success('Task created');
       }
       setForm({ title: '', description: '', image_url: '' });
       load();
@@ -373,7 +372,7 @@ export const AdminTasks = () => {
       <h1 className="page-title">{editing ? 'Edit Task' : 'Tasks'}</h1>
 
       <div className="form-card" style={{ maxWidth: 600 }}>
-        <h2 style={{ marginBottom: 20 }}>{editing ? '✏️ Edit Task' : '➕ Create New Task'}</h2>
+        <h2 style={{ marginBottom: 20 }}>{editing ? 'Edit Task' : 'Create New Task'}</h2>
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label>Task Title *</label>
@@ -394,7 +393,7 @@ export const AdminTasks = () => {
           </div>
           <div style={{ display: 'flex', gap: 10 }}>
             <button type="submit" className="btn-primary" disabled={loading} style={{ flex: 1 }}>
-              {loading ? 'Saving...' : editing ? '💾 Update Task' : '🚀 Post Task'}
+              {loading ? 'Saving...' : editing ? 'Update Task' : 'Post Task'}
             </button>
             {editing && (
               <button type="button" className="btn-primary" style={{ flex: 1, background: '#334155' }}
@@ -427,17 +426,17 @@ export const AdminTasks = () => {
                 </td>
                 <td>
                   <span className={`badge ${t.is_active ? 'active' : 'inactive'}`}>
-                    {t.is_active ? '🟢 Active' : '🔴 Inactive'}
+                    {t.is_active ? 'Active' : 'Inactive'}
                   </span>
                 </td>
                 <td style={{ fontSize: '0.8rem' }}>{new Date(t.created_at).toLocaleDateString()}</td>
                 <td className="action-btns">
-                  <button className="btn-sm" onClick={() => startEdit(t)}>✏️ Edit</button>
+                  <button className="btn-sm" onClick={() => startEdit(t)}>Edit</button>
                   <button className="btn-sm" style={{ color: t.is_active ? '#ef4444' : '#22c55e', borderColor: t.is_active ? '#ef4444' : '#22c55e' }}
                     onClick={() => toggleTask(t.id, !t.is_active)}>
                     {t.is_active ? 'Disable' : 'Enable'}
                   </button>
-                  <button className="btn-sm red" onClick={() => deleteTask(t.id)}>🗑 Delete</button>
+                  <button className="btn-sm red" onClick={() => deleteTask(t.id)}>Delete</button>
                 </td>
               </tr>
             ))}
@@ -469,7 +468,7 @@ export const AdminSubmissions = () => {
     }
     try {
       await api.patch(`/admin/submissions/${id}`, { status, admin_note });
-      toast.success(status === 'approved' ? '✅ Approved! Earnings credited to user.' : '❌ Submission rejected.');
+      toast.success(status === 'approved' ? 'Approved! Earnings credited to user.' : 'Submission rejected.');
       load();
     } catch { toast.error('Failed to update submission'); }
   };
@@ -497,16 +496,16 @@ export const AdminSubmissions = () => {
               position: 'absolute', top: -14, right: -14, background: '#ef4444',
               border: 'none', color: '#fff', borderRadius: '50%', width: 34, height: 34,
               cursor: 'pointer', fontSize: 18, fontWeight: 700
-            }}>✕</button>
+            }}>X</button>
           </div>
         </div>
       )}
 
       <div className="filter-tabs">
         {[
-          { key: 'pending', label: `⏳ Pending (${counts.pending})` },
-          { key: 'approved', label: `✅ Approved (${counts.approved})` },
-          { key: 'rejected', label: `❌ Rejected (${counts.rejected})` },
+          { key: 'pending', label: `Pending (${counts.pending})` },
+          { key: 'approved', label: `Approved (${counts.approved})` },
+          { key: 'rejected', label: `Rejected (${counts.rejected})` },
         ].map(f => (
           <button key={f.key} className={`filter-tab ${filter === f.key ? 'active' : ''}`} onClick={() => setFilter(f.key)}>
             {f.label}
@@ -542,7 +541,7 @@ export const AdminSubmissions = () => {
                     {s.screenshot_url ? (
                       <button className="btn-sm" style={{ background: '#0f172a', borderColor: '#4f8ef7', color: '#4f8ef7' }}
                         onClick={() => setPreview(s.screenshot_url)}>
-                        📷 View
+                        View
                       </button>
                     ) : <span style={{ color: '#64748b', fontSize: '0.8rem' }}>None</span>}
                   </td>
@@ -550,13 +549,13 @@ export const AdminSubmissions = () => {
                   <td className="action-btns">
                     {s.status === 'pending' ? (
                       <>
-                        <button className="btn-sm green" onClick={() => review(s.id, 'approved')}>✅ Approve</button>
-                        <button className="btn-sm red" onClick={() => review(s.id, 'rejected')}>❌ Reject</button>
+                        <button className="btn-sm green" onClick={() => review(s.id, 'approved')}>Approve</button>
+                        <button className="btn-sm red" onClick={() => review(s.id, 'rejected')}>Reject</button>
                       </>
                     ) : (
                       <span className={`badge ${s.status}`}>{s.status}</span>
                     )}
-                    {s.admin_note && <span title={s.admin_note} style={{ cursor: 'help', fontSize: '0.8rem' }}>📝</span>}
+                    {s.admin_note && <span title={s.admin_note} style={{ cursor: 'help', fontSize: '0.8rem' }}>Note</span>}
                   </td>
                 </tr>
               ))}
@@ -596,7 +595,7 @@ export const AdminPayments = () => {
           await api.patch(`/admin/users/${txn.user_id}`, { package_level: pkg });
         }
       }
-      toast.success('✅ Payment manually completed. User updated.');
+      toast.success('Payment manually completed. User updated.');
       load();
     } catch { toast.error('Failed'); }
   };
@@ -623,14 +622,14 @@ export const AdminPayments = () => {
       </div>
 
       <div className="info-banner" style={{ marginBottom: 16 }}>
-        💡 Payments complete automatically via M-Pesa callback. Use <strong>Manual Complete</strong> only if callback failed but you confirmed payment on M-Pesa.
+        Payments complete automatically via M-Pesa callback. Use <strong>Manual Complete</strong> only if callback failed but you confirmed payment on M-Pesa.
       </div>
 
       <div className="filter-tabs">
         {[
-          { key: 'pending', label: `⏳ Pending (${counts.pending})` },
-          { key: 'completed', label: `✅ Completed (${counts.completed})` },
-          { key: 'failed', label: `❌ Failed (${counts.failed})` },
+          { key: 'pending', label: `Pending (${counts.pending})` },
+          { key: 'completed', label: `Completed (${counts.completed})` },
+          { key: 'failed', label: `Failed (${counts.failed})` },
           { key: 'all', label: `All (${paymentTxns.length})` },
         ].map(f => (
           <button key={f.key} className={`filter-tab ${filter === f.key ? 'active' : ''}`} onClick={() => setFilter(f.key)}>
@@ -660,8 +659,8 @@ export const AdminPayments = () => {
                   <td className="action-btns">
                     {t.status === 'pending' && (
                       <>
-                        <button className="btn-sm green" onClick={() => manualComplete(t)}>✅ Complete</button>
-                        <button className="btn-sm red" onClick={() => markFailed(t.id)}>❌ Fail</button>
+                        <button className="btn-sm green" onClick={() => manualComplete(t)}>Complete</button>
+                        <button className="btn-sm red" onClick={() => markFailed(t.id)}>Fail</button>
                       </>
                     )}
                   </td>
@@ -702,9 +701,9 @@ export const AdminWithdrawals = () => {
       }
       await api.patch(`/admin/withdrawals/${id}`, { action, admin_note });
       const msgs = {
-        approve: '✅ M-Pesa payout sent via Paystack!',
-        mark_paid: '✅ Marked as paid manually',
-        reject: '❌ Rejected — amount refunded to user wallet',
+        approve: 'M-Pesa payout sent via Paystack!',
+        mark_paid: 'Marked as paid manually',
+        reject: 'Rejected — amount refunded to user wallet',
       };
       toast.success(msgs[action]);
       load();
@@ -712,7 +711,7 @@ export const AdminWithdrawals = () => {
       const errMsg = err.response?.data?.error || 'Failed to process';
       const hint = err.response?.data?.hint || '';
       toast.error(errMsg, { duration: 6000 });
-      if (hint) setTimeout(() => toast(hint, { icon: 'ℹ️' }), 500);
+      if (hint) setTimeout(() => toast(hint), 500);
     } finally {
       setProcessing(null);
     }
@@ -732,16 +731,16 @@ export const AdminWithdrawals = () => {
 
       {counts.pending > 0 && (
         <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 12, padding: '14px 18px', marginBottom: 16 }}>
-          <strong style={{ color: '#ef4444' }}>⚠️ {counts.pending} pending withdrawal{counts.pending > 1 ? 's' : ''}</strong>
+          <strong style={{ color: '#ef4444' }}>{counts.pending} pending withdrawal{counts.pending > 1 ? 's' : ''}</strong>
           <span style={{ color: '#94a3b8', marginLeft: 8 }}>— Total: KES {pendingTotal.toLocaleString()}</span>
         </div>
       )}
 
       <div className="filter-tabs">
         {[
-          { key: 'pending', label: `⏳ Pending (${counts.pending})` },
-          { key: 'paid', label: `✅ Paid (${counts.paid})` },
-          { key: 'rejected', label: `❌ Rejected (${counts.rejected})` },
+          { key: 'pending', label: `Pending (${counts.pending})` },
+          { key: 'paid', label: `Paid (${counts.paid})` },
+          { key: 'rejected', label: `Rejected (${counts.rejected})` },
         ].map(f => (
           <button key={f.key} className={`filter-tab ${filter === f.key ? 'active' : ''}`} onClick={() => setFilter(f.key)}>
             {f.label}
@@ -771,13 +770,13 @@ export const AdminWithdrawals = () => {
                     {w.status === 'pending' ? (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                         <button className="btn-sm green" onClick={() => handleWithdrawal(w.id, 'approve')} disabled={!!processing} title="Auto-pay via Paystack">
-                          {processing === w.id ? '⏳...' : '📲 Pay via M-Pesa'}
+                          {processing === w.id ? '...' : 'Pay via M-Pesa'}
                         </button>
                         <button className="btn-sm" style={{ borderColor: '#3b82f6', color: '#3b82f6' }} onClick={() => handleWithdrawal(w.id, 'mark_paid')} disabled={!!processing} title="You sent M-Pesa manually">
-                          ✅ Mark Paid
+                          Mark Paid
                         </button>
                         <button className="btn-sm red" onClick={() => handleWithdrawal(w.id, 'reject')} disabled={!!processing}>
-                          ❌ Reject
+                          Reject
                         </button>
                       </div>
                     ) : (

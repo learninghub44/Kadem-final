@@ -8,12 +8,11 @@ const WA_CHANNEL = 'https://whatsapp.com/channel/0029VbD1tzELdQedEpwZ5841';
 
 const WaBanner = () => (
   <a href={WA_CHANNEL} target="_blank" rel="noreferrer" className="wa-banner">
-    <span className="wa-icon">📣</span>
     <div style={{ flex: 1 }}>
       <strong>Join our WhatsApp Channel</strong>
       <p>Get notified of new tasks & bonuses instantly</p>
     </div>
-    <span className="wa-join">Join →</span>
+    <span className="wa-join">Join</span>
   </a>
 );
 
@@ -22,9 +21,9 @@ const LockedGuard = ({ children }) => {
   if (user?.status !== 'active') return (
     <div className="page" style={{ textAlign: 'center', paddingTop: 60 }}>
       <Lock size={48} color="#f59e0b" style={{ margin: '0 auto 16px' }} />
-      <h2 style={{ color: '#f59e0b' }}>Feature Locked</h2>
-      <p style={{ color: '#64748b', marginBottom: 20 }}>Activate your account to access this feature.</p>
-      <a href="/dashboard" className="btn-primary" style={{ textDecoration: 'none', display: 'inline-block' }}>← Go Activate</a>
+      <h2 style={{ color: '#f59e0b' }}>Account Not Activated</h2>
+      <p style={{ color: '#64748b', marginBottom: 20 }}>Activate your account to access this feature. Pay KES 150.</p>
+      <a href="/dashboard" className="btn-primary" style={{ textDecoration: 'none', display: 'inline-block' }}>Activate Account</a>
     </div>
   );
   return children;
@@ -58,11 +57,11 @@ export const TasksPage = () => {
                     <p>{task.description}</p>
                     {task.my_submission ? (
                       <span className={`submission-badge ${task.my_submission.status}`}>
-                        {task.my_submission.status === 'approved' ? `✅ Approved — KES ${task.my_submission.earning_amount}` :
-                         task.my_submission.status === 'pending' ? '⏳ Pending Admin Review' : '❌ Rejected'}
+                        {task.my_submission.status === 'approved' ? `Approved - KES ${task.my_submission.earning_amount}` :
+                         task.my_submission.status === 'pending' ? 'Pending Admin Review' : 'Rejected'}
                       </span>
                     ) : (
-                      <a href="/dashboard/upload" className="task-cta-btn">📤 Submit Screenshot</a>
+                      <a href="/dashboard/upload" className="task-cta-btn">Submit Screenshot</a>
                     )}
                   </div>
                 </div>
@@ -119,7 +118,7 @@ export const UploadPage = () => {
         screenshot_mime: photoFile.type,
         views_count: parseInt(views),
       });
-      toast.success(`✅ Submitted! Potential earning: KES ${resp.data.potential_earning}`);
+      toast.success(`Submitted! Potential earning: KES ${resp.data.potential_earning}`);
       setViews('');
       setPhotoFile(null);
       setPreview(null);
@@ -135,7 +134,7 @@ export const UploadPage = () => {
         <WaBanner />
         <h1 className="page-title">Upload Screenshot</h1>
         <div className="info-banner" style={{ marginBottom: 16 }}>
-          📸 Take a <strong>real screenshot</strong> of your WhatsApp status views and upload the photo. Links are not accepted.
+          Take a <strong>real screenshot</strong> of your WhatsApp status views and upload the photo. Links are not accepted.
         </div>
         <div className="form-card" style={{ maxWidth: '100%' }}>
           <form onSubmit={handleSubmit}>
@@ -145,16 +144,15 @@ export const UploadPage = () => {
                 {preview
                   ? <img src={preview} alt="Preview" className="photo-preview" />
                   : <div className="photo-placeholder">
-                      <span>📷</span>
                       <p>Tap to select screenshot</p>
-                      <small>JPG, PNG — max 5MB</small>
+                      <small>JPG, PNG - max 5MB</small>
                     </div>
                 }
               </div>
               <input ref={fileRef} type="file" accept="image/*" onChange={handlePhoto} style={{ display: 'none' }} />
               {photoFile && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
-                  <small style={{ color: '#22c55e' }}>✅ {photoFile.name}</small>
+                  <small style={{ color: '#22c55e' }}>{photoFile.name}</small>
                   <button type="button" className="btn-sm red" onClick={() => { setPhotoFile(null); setPreview(null); if (fileRef.current) fileRef.current.value = ''; }}>Remove</button>
                 </div>
               )}
@@ -165,7 +163,7 @@ export const UploadPage = () => {
               <small style={{ color: '#64748b' }}>Enter the exact views count shown in your screenshot.</small>
             </div>
             <button type="submit" className="btn-primary" disabled={loading || !photoFile}>
-              {loading ? '⏳ Uploading...' : '📤 Submit for Review'}
+              {loading ? 'Uploading...' : 'Submit for Review'}
             </button>
           </form>
         </div>
@@ -229,7 +227,7 @@ export const DepositPage = () => {
     setLoading(true);
     try {
       await api.post('/payments/deposit', { amount: Number(amount) });
-      toast.success('✅ STK Push sent! Enter your M-Pesa PIN.');
+      toast.success('STK Push sent! Enter your M-Pesa PIN.');
       setAmount('');
     } catch (err) {
       toast.error(err.response?.data?.error || 'Deposit failed');
@@ -277,7 +275,7 @@ export const WithdrawPage = () => {
     setLoading(true);
     try {
       await api.post('/payments/withdraw-request', { amount: Number(form.amount), phone: form.phone });
-      toast.success('✅ Withdrawal submitted! Admin will process within 24 hours.');
+      toast.success('Withdrawal submitted! Admin will process within 24 hours.');
       setForm(f => ({ ...f, amount: '' }));
       loadWithdrawals();
     } catch (err) {
@@ -288,7 +286,7 @@ export const WithdrawPage = () => {
   return (
     <div className="page">
       <h1 className="page-title">Withdraw Earnings</h1>
-      {!isActive && <div className="info-banner">ℹ️ Activate your account to request withdrawals.</div>}
+      {!isActive && <div className="info-banner">Activate your account to request withdrawals.</div>}
       {isActive && (
         <div className="form-card" style={{ maxWidth: '100%' }}>
           <p className="balance-hint">Available: <strong>KES {Number(user?.wallet_balance || 0).toLocaleString()}</strong></p>
@@ -312,7 +310,7 @@ export const WithdrawPage = () => {
         {withdrawals.map(w => (
           <div key={w.id} className="txn-row">
             <div className="txn-info">
-              <p className="txn-desc">KES {Number(w.amount).toLocaleString()} → {w.phone}</p>
+              <p className="txn-desc">KES {Number(w.amount).toLocaleString()} to {w.phone}</p>
               <span className="txn-date">{new Date(w.requested_at).toLocaleDateString()}</span>
             </div>
             <span className={`badge ${w.status}`}>{w.status}</span>
@@ -340,7 +338,7 @@ export const PackagesPage = () => {
     setBuying(pkg);
     try {
       await api.post('/payments/buy-package', { package_name: pkg });
-      toast.success('✅ STK Push sent! Enter your M-Pesa PIN.');
+      toast.success('STK Push sent! Enter your M-Pesa PIN.');
       setTimeout(() => refreshUser && refreshUser(), 8000);
     } catch (err) {
       toast.error(err.response?.data?.error || 'Payment failed');
@@ -359,7 +357,7 @@ export const PackagesPage = () => {
             <div className="pkg-price">KES {pkg.price.toLocaleString()}</div>
             <div className="pkg-desc">{pkg.desc}</div>
             {user?.package_level === pkg.name
-              ? <span className="current-pkg">✅ Current Package</span>
+              ? <span className="current-pkg">Current Package</span>
               : <button className="btn-pkg" style={{ background: pkg.color }} onClick={() => handleBuy(pkg.name)} disabled={buying === pkg.name}>
                   {buying === pkg.name ? 'Sending STK...' : 'Buy Now'}
                 </button>
@@ -389,7 +387,7 @@ export const ReferralsPage = () => {
         <p>Your Referral Code</p>
         <h2 className="ref-code">{user?.referral_code}</h2>
         <input className="ref-link" value={referralLink} readOnly />
-        <button className="btn-primary" onClick={copyLink}>📋 Copy Referral Link</button>
+        <button className="btn-primary" onClick={copyLink}>Copy Referral Link</button>
       </div>
       <div className="ref-bonuses">
         <h3>Referral Bonuses</h3>
@@ -407,7 +405,7 @@ export const ReferralsPage = () => {
           {data.referrals?.map(r => (
             <div key={r.id} className="txn-row">
               <div className="txn-info"><p className="txn-desc">{r.full_name}</p><span className="txn-date">{new Date(r.created_at).toLocaleDateString()}</span></div>
-              <span className={`badge ${r.status}`}>{r.package_level?.toUpperCase() || 'NONE'} · {r.status}</span>
+              <span className={`badge ${r.status}`}>{r.package_level?.toUpperCase() || 'NONE'} / {r.status}</span>
             </div>
           ))}
           {data.referrals?.length === 0 && <div className="empty">No referrals yet. Share your link!</div>}

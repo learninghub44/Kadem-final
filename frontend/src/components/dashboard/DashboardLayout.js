@@ -6,7 +6,7 @@ import {
   ArrowUpCircle, Package, Users, Receipt, User, LogOut, Menu, X, Shield, Lock
 } from 'lucide-react';
 
-const navItems = [
+const allNavItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', end: true, locked: false },
   { to: '/dashboard/tasks', icon: Smartphone, label: 'WhatsApp Tasks', locked: true },
   { to: '/dashboard/upload', icon: Upload, label: 'Upload Screenshot', locked: true },
@@ -26,6 +26,10 @@ export const DashboardLayout = () => {
 
   const handleLogout = () => { logout(); navigate('/login'); };
   const isActive = user?.status === 'active';
+
+  const navItems = isActive
+    ? allNavItems
+    : allNavItems.filter(item => !item.locked);
 
   const handleNavClick = (locked, e) => {
     setSidebarOpen(false);
@@ -51,7 +55,7 @@ export const DashboardLayout = () => {
           <div>
             <p className="user-name">{user?.full_name}</p>
             <span className="status-badge" style={{ background: isActive ? '#22c55e' : '#f59e0b' }}>
-              {isActive ? '✅ ACTIVE' : '🔒 INACTIVE'}
+              {isActive ? 'ACTIVE' : 'INACTIVE'}
             </span>
           </div>
         </div>
@@ -98,7 +102,7 @@ export const DashboardLayout = () => {
           <div className="topbar-right">
             {!isActive && (
               <span style={{ background: '#f59e0b22', color: '#f59e0b', padding: '4px 12px', borderRadius: 6, fontSize: 12, fontWeight: 700 }}>
-                🔒 Account Locked
+                Account Locked
               </span>
             )}
             {isActive && user?.package_level && user.package_level !== 'none' && (

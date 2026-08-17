@@ -82,7 +82,6 @@ export const RegisterPage = () => {
     return (
       <div className="auth-page">
         <div className="auth-card" style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 48, marginBottom: 12 }}>🎉</div>
           <h2 style={{ color: '#22c55e', marginBottom: 8 }}>Account Created!</h2>
           <p style={{ marginBottom: 20, color: '#64748b' }}>
             Welcome to Kadem! Join our WhatsApp channel to get the latest updates, tasks, and announcements.
@@ -94,14 +93,14 @@ export const RegisterPage = () => {
             className="btn-primary"
             style={{ display: 'block', background: '#25D366', marginBottom: 12, textDecoration: 'none' }}
           >
-            📲 Join WhatsApp Channel
+            Join WhatsApp Channel
           </a>
           <button
             className="btn-primary"
             style={{ background: '#6366f1' }}
             onClick={() => navigate('/dashboard')}
           >
-            Go to Dashboard →
+            Go to Dashboard
           </button>
           <p style={{ marginTop: 12, fontSize: 13, color: '#94a3b8' }}>
             You can also join later from your dashboard.

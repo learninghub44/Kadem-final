@@ -31,7 +31,11 @@ const toLocalPhone = (phone) => {
 
 const extractError = (err) => {
   const data = err.response?.data;
-  return data?.message || data?.error || err.message;
+  const msg = data?.message || data?.error || err.message;
+  if (err.response?.status === 401 || (msg && msg.toLowerCase().includes('invalid'))) {
+    return 'Invalid API key. Please contact support.';
+  }
+  return msg;
 };
 
 // ── Charge a customer via M-Pesa STK push ──────────────────────

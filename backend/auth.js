@@ -29,7 +29,7 @@ const requireAdmin = (req, res, next) => {
 };
 
 const requireActive = (req, res, next) => {
-  if (req.user?.status !== 'active') return res.status(403).json({ error: 'Account not activated. Pay KES 550 to activate.' });
+  if (req.user?.status !== 'active') return res.status(403).json({ error: 'Account not activated. Pay KES 150 to activate.' });
   next();
 };
 

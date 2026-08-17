@@ -11,7 +11,7 @@ const PACKAGES = {
   silver:  { price: 1500 },
   gold:    { price: 2999 },
 };
-const ACTIVATION_FEE = 550;
+const ACTIVATION_FEE = 150;
 
 // ── POST /api/payments/activate ───────────────────────────────
 router.post('/activate', authenticate, async (req, res) => {
@@ -19,6 +19,11 @@ router.post('/activate', authenticate, async (req, res) => {
     const user = req.user;
     if (user.status === 'active')
       return res.status(400).json({ error: 'Account is already active' });
+
+    const { phone } = req.body;
+    const phoneToUse = phone || user.phone;
+    if (!phoneToUse || !/^(07|01)\d{8}$/.test(phoneToUse.trim()))
+      return res.status(400).json({ error: 'Enter a valid Kenyan M-Pesa number (07XXXXXXXX)' });
 
     // Prevent duplicate pending activation
     const { data: existingPending } = await supabase.from('transactions')
@@ -33,7 +38,7 @@ router.post('/activate', authenticate, async (req, res) => {
     }
 
     const reference = `ACT-${user.id.slice(0, 8)}-${Date.now()}`;
-    await initiateSTKPush(user.phone, ACTIVATION_FEE, reference, `${user.full_name} Activation`, user.email);
+    await initiateSTKPush(phoneToUse.trim(), ACTIVATION_FEE, reference, `${user.full_name} Activation`, user.email);
     await supabase.from('transactions').insert({
       user_id: user.id, type: 'activation', amount: ACTIVATION_FEE,
       status: 'pending', paystack_reference: reference,
@@ -42,7 +47,11 @@ router.post('/activate', authenticate, async (req, res) => {
     res.json({ message: 'STK push sent. Enter your M-Pesa PIN within 30 seconds.', reference });
   } catch (err) {
     console.error('[Activate] Error:', err.message);
-    res.status(502).json({ error: 'Payment initiation failed: ' + err.message });
+    const msg = err.message || '';
+    if (msg.includes('Invalid') && msg.includes('key')) {
+      return res.status(502).json({ error: 'Payment system configuration error. Please contact support.' });
+    }
+    res.status(502).json({ error: 'Payment initiation failed. Please try again.' });
   }
 });
 
@@ -64,7 +73,11 @@ router.post('/buy-package', authenticate, requireActive, async (req, res) => {
     res.json({ message: 'STK push sent. Enter your M-Pesa PIN.', reference });
   } catch (err) {
     console.error('[Buy Package] Error:', err.message);
-    res.status(502).json({ error: 'Payment initiation failed: ' + err.message });
+    const msg = err.message || '';
+    if (msg.includes('Invalid') && msg.includes('key')) {
+      return res.status(502).json({ error: 'Payment system configuration error. Please contact support.' });
+    }
+    res.status(502).json({ error: 'Payment initiation failed. Please try again.' });
   }
 });
 
@@ -86,7 +99,11 @@ router.post('/deposit', authenticate, requireActive, async (req, res) => {
     res.json({ message: 'STK push sent. Enter your M-Pesa PIN.', reference });
   } catch (err) {
     console.error('[Deposit] Error:', err.message);
-    res.status(502).json({ error: 'Payment initiation failed: ' + err.message });
+    const msg = err.message || '';
+    if (msg.includes('Invalid') && msg.includes('key')) {
+      return res.status(502).json({ error: 'Payment system configuration error. Please contact support.' });
+    }
+    res.status(502).json({ error: 'Payment initiation failed. Please try again.' });
   }
 });
 
