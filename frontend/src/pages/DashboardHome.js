@@ -92,23 +92,27 @@ const ActivationScreen = ({ user }) => {
   return (
     <div style={{
       minHeight: '100vh',
+      height: '100%',
       display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: 12,
+      flexDirection: 'column',
+      padding: 0,
       boxSizing: 'border-box',
       overflowY: 'auto',
     }}>
       <div style={{
         background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
-        border: '2px solid #f59e0b',
-        borderRadius: 18,
+        border: 'none',
+        borderRadius: 0,
         padding: 'clamp(20px, 4vh, 32px)',
         textAlign: 'center',
-        maxWidth: 'min(400px, 94vw)',
+        maxWidth: 'none',
         width: '100%',
-        position: 'relative',
+        minHeight: '100vh',
         boxSizing: 'border-box',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'flex-start',
       }}>
         <button
           onClick={() => { logout(); }}
