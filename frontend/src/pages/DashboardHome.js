@@ -13,7 +13,7 @@ const PACKAGES = [
 ];
 
 const ActivationScreen = ({ user }) => {
-  const { refreshUser } = useAuth();
+  const { refreshUser, logout } = useAuth();
   const [phone, setPhone] = useState(user?.phone || '');
   const [activating, setActivating] = useState(false);
 
@@ -57,7 +57,18 @@ const ActivationScreen = ({ user }) => {
         textAlign: 'center',
         maxWidth: 420,
         width: '100%',
+        position: 'relative',
       }}>
+        <button
+          onClick={() => { logout(); }}
+          style={{
+            position: 'absolute', top: 16, right: 16,
+            background: 'none', border: 'none',
+            color: '#64748b', cursor: 'pointer', fontSize: '0.8rem',
+          }}
+        >
+          Logout
+        </button>
         <div style={{
           width: 72,
           height: 72,
