@@ -4,6 +4,58 @@ import toast from 'react-hot-toast';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 
+export const AdminLoginPage = () => {
+  const [form, setForm] = useState({ email: '', password: '' });
+  const [loading, setLoading] = useState(false);
+  const { login } = useAuth();
+  const navigate = useNavigate();
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const res = await api.post('/auth/login', form);
+      if (res.data.user.role !== 'admin') {
+        toast.error('This account is not an admin');
+        return;
+      }
+      login(res.data.token, res.data.user);
+      toast.success('Welcome back!');
+      navigate('/admin');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Login failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="auth-page">
+      <div className="auth-card">
+        <div className="auth-logo">
+          <h1>Kadem</h1>
+          <p>Admin Portal</p>
+        </div>
+        <h2>Admin Sign In</h2>
+        <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label>Email</label>
+            <input type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} required placeholder="admin@email.com" />
+          </div>
+          <div className="form-group">
+            <label>Password</label>
+            <input type="password" value={form.password} onChange={e => setForm({...form, password: e.target.value})} required placeholder="••••••••" />
+          </div>
+          <button type="submit" className="btn-primary" disabled={loading}>
+            {loading ? 'Signing in...' : 'Sign In as Admin'}
+          </button>
+        </form>
+        <p className="auth-link"><Link to="/login">Back to User Login</Link></p>
+      </div>
+    </div>
+  );
+};
+
 export const LoginPage = () => {
   const [form, setForm] = useState({ email: '', password: '' });
   const [loading, setLoading] = useState(false);

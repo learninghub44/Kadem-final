@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
 const supabase = require('./supabase');
+const { invalidateUserCache } = require('./auth');
 
 // Strict rate limit for auth endpoints
 const authLimiter = rateLimit({
@@ -42,15 +43,17 @@ router.post('/register', authLimiter, async (req, res) => {
     const cleanEmail = email.toLowerCase().trim();
     const cleanPhone = phone.trim();
 
-    // Check existing email
-    const { data: emailExists } = await supabase
-      .from('users').select('id').eq('email', cleanEmail).maybeSingle();
-    if (emailExists) return res.status(409).json({ error: 'Email already registered' });
+    // Check existing email AND phone in ONE query
+    const { data: existingUsers } = await supabase
+      .from('users').select('id, email, phone')
+      .or(`email.eq.${cleanEmail},phone.eq.${cleanPhone}`);
 
-    // Check existing phone
-    const { data: phoneExists } = await supabase
-      .from('users').select('id').eq('phone', cleanPhone).maybeSingle();
-    if (phoneExists) return res.status(409).json({ error: 'Phone number already registered' });
+    if (existingUsers?.length) {
+      const emailTaken = existingUsers.some(u => u.email === cleanEmail);
+      const phoneTaken = existingUsers.some(u => u.phone === cleanPhone);
+      if (emailTaken) return res.status(409).json({ error: 'Email already registered' });
+      if (phoneTaken) return res.status(409).json({ error: 'Phone number already registered' });
+    }
 
     // Validate referral code if provided
     let referrerData = null;
@@ -65,12 +68,13 @@ router.post('/register', authLimiter, async (req, res) => {
 
     const password_hash = await bcrypt.hash(password, 12);
 
-    // Generate unique referral code
-    let referral_code, codeExists = true;
-    while (codeExists) {
+    // Generate unique referral code (max 5 attempts to avoid infinite loop)
+    let referral_code;
+    for (let attempt = 0; attempt < 5; attempt++) {
       referral_code = generateReferralCode();
       const { data } = await supabase.from('users').select('id').eq('referral_code', referral_code).maybeSingle();
-      codeExists = !!data;
+      if (!data) break;
+      if (attempt === 4) referral_code = generateReferralCode() + Date.now().toString(36).slice(-2);
     }
 
     const { data: user, error } = await supabase
@@ -141,6 +145,8 @@ router.post('/login', authLimiter, async (req, res) => {
 
     const { password_hash, ...safeUser } = user;
     const token = signToken(user.id);
+    // Cache the user data on login
+    invalidateUserCache(user.id);
     res.json({ message: 'Login successful', token, user: safeUser });
   } catch (err) {
     console.error('Login error:', err);

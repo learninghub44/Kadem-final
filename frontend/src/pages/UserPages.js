@@ -221,16 +221,66 @@ export const DepositPage = () => {
   const { user } = useAuth();
   const [amount, setAmount] = useState('');
   const [loading, setLoading] = useState(false);
+  const [waiting, setWaiting] = useState(false);
 
   const handleDeposit = async (e) => {
     e.preventDefault();
     setLoading(true);
+    setWaiting(true);
     try {
-      await api.post('/payments/deposit', { amount: Number(amount) });
+      const res = await api.post('/payments/deposit', { amount: Number(amount) });
+      const reference = res.data.reference;
       toast.success('STK Push sent! Enter your M-Pesa PIN.');
       setAmount('');
+
+      // Poll status in background
+      const started = Date.now();
+      const POLL_MS = 5000;
+      const VERIFY_AFTER_MS = 30000;
+      const TIMEOUT_MS = 90000;
+      let verified = false;
+
+      const poll = setInterval(async () => {
+        const elapsed = Date.now() - started;
+        if (elapsed > TIMEOUT_MS) {
+          clearInterval(poll);
+          setWaiting(false);
+          return;
+        }
+        try {
+          const { data } = await api.get(`/payments/status/${reference}`);
+          if (data.status === 'completed') {
+            clearInterval(poll);
+            toast.success('Deposit successful!');
+            setWaiting(false);
+            return;
+          } else if (data.status === 'failed') {
+            clearInterval(poll);
+            toast.error('Payment failed. Please try again.');
+            setWaiting(false);
+            return;
+          }
+          // After 30s, verify with Paystack
+          if (elapsed >= VERIFY_AFTER_MS && !verified) {
+            verified = true;
+            try {
+              const { data: v } = await api.post(`/payments/verify/${reference}`);
+              if (v.status === 'completed') {
+                clearInterval(poll);
+                toast.success('Deposit successful!');
+                setWaiting(false);
+              } else if (v.status === 'failed') {
+                clearInterval(poll);
+                toast.error('Payment failed. Please try again.');
+                setWaiting(false);
+              }
+            } catch {}
+          }
+        } catch {}
+      }, POLL_MS);
     } catch (err) {
       toast.error(err.response?.data?.error || 'Deposit failed');
+      setWaiting(false);
     } finally { setLoading(false); }
   };
 
@@ -242,10 +292,10 @@ export const DepositPage = () => {
         <form onSubmit={handleDeposit}>
           <div className="form-group">
             <label>Amount (KES)</label>
-            <input type="number" min="10" placeholder="e.g. 500" value={amount} onChange={e => setAmount(e.target.value)} required />
+            <input type="number" min="10" placeholder="e.g. 500" value={amount} onChange={e => setAmount(e.target.value)} required disabled={waiting} />
           </div>
-          <button type="submit" className="btn-primary" disabled={loading}>
-            {loading ? 'Sending STK Push...' : 'Deposit via M-Pesa'}
+          <button type="submit" className="btn-primary" disabled={loading || waiting}>
+            {waiting ? 'Waiting for PIN...' : loading ? 'Sending STK Push...' : 'Deposit via M-Pesa'}
           </button>
         </form>
       </div>
@@ -333,15 +383,66 @@ const PACKAGES = [
 export const PackagesPage = () => {
   const { user, refreshUser } = useAuth();
   const [buying, setBuying] = useState(null);
+  const [waiting, setWaiting] = useState(false);
 
   const handleBuy = async (pkg) => {
     setBuying(pkg);
+    setWaiting(true);
     try {
-      await api.post('/payments/buy-package', { package_name: pkg });
+      const res = await api.post('/payments/buy-package', { package_name: pkg });
+      const reference = res.data.reference;
       toast.success('STK Push sent! Enter your M-Pesa PIN.');
-      setTimeout(() => refreshUser && refreshUser(), 8000);
+
+      // Poll status in background
+      const started = Date.now();
+      const POLL_MS = 5000;
+      const VERIFY_AFTER_MS = 30000;
+      const TIMEOUT_MS = 90000;
+      let verified = false;
+
+      const poll = setInterval(async () => {
+        const elapsed = Date.now() - started;
+        if (elapsed > TIMEOUT_MS) {
+          clearInterval(poll);
+          setWaiting(false);
+          return;
+        }
+        try {
+          const { data } = await api.get(`/payments/status/${reference}`);
+          if (data.status === 'completed') {
+            clearInterval(poll);
+            toast.success('Package purchased successfully!');
+            refreshUser && refreshUser();
+            setWaiting(false);
+            return;
+          } else if (data.status === 'failed') {
+            clearInterval(poll);
+            toast.error('Payment failed. Please try again.');
+            setWaiting(false);
+            return;
+          }
+          // After 30s, verify with Paystack
+          if (elapsed >= VERIFY_AFTER_MS && !verified) {
+            verified = true;
+            try {
+              const { data: v } = await api.post(`/payments/verify/${reference}`);
+              if (v.status === 'completed') {
+                clearInterval(poll);
+                toast.success('Package purchased successfully!');
+                refreshUser && refreshUser();
+                setWaiting(false);
+              } else if (v.status === 'failed') {
+                clearInterval(poll);
+                toast.error('Payment failed. Please try again.');
+                setWaiting(false);
+              }
+            } catch {}
+          }
+        } catch {}
+      }, POLL_MS);
     } catch (err) {
       toast.error(err.response?.data?.error || 'Payment failed');
+      setWaiting(false);
     } finally { setBuying(null); }
   };
 
@@ -358,8 +459,8 @@ export const PackagesPage = () => {
             <div className="pkg-desc">{pkg.desc}</div>
             {user?.package_level === pkg.name
               ? <span className="current-pkg">Current Package</span>
-              : <button className="btn-pkg" style={{ background: pkg.color }} onClick={() => handleBuy(pkg.name)} disabled={buying === pkg.name}>
-                  {buying === pkg.name ? 'Sending STK...' : 'Buy Now'}
+              : <button className="btn-pkg" style={{ background: pkg.color }} onClick={() => handleBuy(pkg.name)} disabled={buying === pkg.name || waiting}>
+                  {waiting ? 'Waiting for PIN...' : buying === pkg.name ? 'Sending STK...' : 'Buy Now'}
                 </button>
             }
           </div>

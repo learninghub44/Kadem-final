@@ -3,7 +3,7 @@ const express = require('express');
 const router = express.Router();
 const supabase = require('./supabase');
 const { initiateSTKPush, checkTransactionStatus } = require('./paystack');
-const { authenticate, requireActive, requireAdmin } = require('./auth');
+const { authenticate, requireActive, requireAdmin, invalidateUserCache } = require('./auth');
 
 const PACKAGES = {
   starter: { price: 100 },
@@ -25,16 +25,16 @@ router.post('/activate', authenticate, async (req, res) => {
     if (!phoneToUse || !/^(07|01)\d{8}$/.test(phoneToUse.trim()))
       return res.status(400).json({ error: 'Enter a valid Kenyan M-Pesa number (07XXXXXXXX)' });
 
-    // ── Attempt cap: 3 failed activation attempts → wait 5 minutes ──
+    // Attempt cap: 3 failed activation attempts → wait 5 minutes
     const FIVE_MIN = 5 * 60 * 1000;
-    const { data: failedAttempts, count: failedCount } = await supabase.from('transactions')
+    const { data: failedAttempts } = await supabase.from('transactions')
       .select('id', { count: 'exact' })
       .eq('user_id', user.id)
       .eq('type', 'activation')
       .eq('status', 'failed')
       .gte('created_at', new Date(Date.now() - FIVE_MIN).toISOString());
 
-    if ((failedCount || failedAttempts?.length || 0) >= 3) {
+    if ((failedAttempts?.length || 0) >= 3) {
       return res.status(429).json({
         error: 'Too many failed attempts. Please wait 5 minutes before trying again.',
         retry_after: 300,
@@ -43,33 +43,15 @@ router.post('/activate', authenticate, async (req, res) => {
 
     // Prevent duplicate pending activation
     const { data: existingPending } = await supabase.from('transactions')
-      .select('id, created_at, paystack_reference').eq('user_id', user.id)
+      .select('id, created_at').eq('user_id', user.id)
       .eq('type', 'activation').eq('status', 'pending')
       .order('created_at', { ascending: false }).limit(1).maybeSingle();
 
     if (existingPending) {
       const age = Date.now() - new Date(existingPending.created_at).getTime();
-      if (age < 90 * 1000) // 90 seconds — still giving user time to enter PIN
-        return res.status(429).json({ error: 'STK push already sent. Please check your phone and enter your M-Pesa PIN.' });
-
-      // Stale pending → ask Paystack what actually happened.
-      try {
-        const live = await checkTransactionStatus(existingPending.paystack_reference);
-        const st = (live?.data?.status || '').toLowerCase();
-        if (st === 'success') {
-          // Paid but effect not applied yet — apply it now.
-          await supabase.from('transactions')
-            .update({ status: 'completed', mpesa_code: live?.data?.id || null })
-            .eq('id', existingPending.id);
-          await applyPaymentEffects(existingPending, live?.data?.id || null, Number(live?.data?.amount || 0) / 100);
-          return res.status(400).json({ error: 'Payment already completed. Activating your account now.' });
-        }
-        // abandoned/failed/timed-out → allow a fresh attempt
-        await supabase.from('transactions').update({ status: 'failed' }).eq('id', existingPending.id);
-      } catch (e) {
-        console.error('[Activate] Could not verify stale pending:', e.message);
-        return res.status(429).json({ error: 'The previous payment is still being processed. Please check your phone and try again shortly.' });
-      }
+      if (age < 90 * 1000)
+        return res.status(429).json({ error: 'STK push already sent. Check your phone and enter your M-Pesa PIN.' });
+      await supabase.from('transactions').update({ status: 'failed' }).eq('id', existingPending.id);
     }
 
     const reference = `ACT-${user.id.slice(0, 8)}-${Date.now()}`;
@@ -98,6 +80,20 @@ router.post('/buy-package', authenticate, requireActive, async (req, res) => {
     if (!pkg) return res.status(400).json({ error: 'Invalid package name' });
 
     const user = req.user;
+
+    // Prevent duplicate pending package purchase
+    const { data: existingPending } = await supabase.from('transactions')
+      .select('id, created_at').eq('user_id', user.id)
+      .eq('type', 'package').eq('status', 'pending')
+      .order('created_at', { ascending: false }).limit(1).maybeSingle();
+
+    if (existingPending) {
+      const age = Date.now() - new Date(existingPending.created_at).getTime();
+      if (age < 90 * 1000)
+        return res.status(429).json({ error: 'STK push already sent. Check your phone and enter your M-Pesa PIN.' });
+      await supabase.from('transactions').update({ status: 'failed' }).eq('id', existingPending.id);
+    }
+
     const reference = `PKG-${user.id.slice(0, 8)}-${Date.now()}`;
     await initiateSTKPush(user.phone, pkg.price, reference, `${package_name} Package`, user.email);
     await supabase.from('transactions').insert({
@@ -124,6 +120,20 @@ router.post('/deposit', authenticate, requireActive, async (req, res) => {
       return res.status(400).json({ error: 'Amount must be between KES 10 and KES 150,000' });
 
     const user = req.user;
+
+    // Prevent duplicate pending deposit
+    const { data: existingPending } = await supabase.from('transactions')
+      .select('id, created_at').eq('user_id', user.id)
+      .eq('type', 'deposit').eq('status', 'pending')
+      .order('created_at', { ascending: false }).limit(1).maybeSingle();
+
+    if (existingPending) {
+      const age = Date.now() - new Date(existingPending.created_at).getTime();
+      if (age < 90 * 1000)
+        return res.status(429).json({ error: 'STK push already sent. Check your phone and enter your M-Pesa PIN.' });
+      await supabase.from('transactions').update({ status: 'failed' }).eq('id', existingPending.id);
+    }
+
     const reference = `DEP-${user.id.slice(0, 8)}-${Date.now()}`;
     await initiateSTKPush(user.phone, amt, reference, 'Wallet Deposit', user.email);
     await supabase.from('transactions').insert({
@@ -143,15 +153,12 @@ router.post('/deposit', authenticate, requireActive, async (req, res) => {
 });
 
 // ── POST /api/payments/withdraw-request ──────────────────────
-// USER submits request only. Admin processes it manually. No M-Pesa here.
 router.post('/withdraw-request', authenticate, requireActive, async (req, res) => {
   try {
     const { amount, phone } = req.body;
     const user = req.user;
     const amt = Number(amount);
 
-    // Validations
-    // Eligibility: Silver/Gold package OR 3+ referrals
     const hasSilverGold = ['silver', 'gold'].includes(user.package_level);
     if (!hasSilverGold) {
       const { count } = await supabase
@@ -171,19 +178,20 @@ router.post('/withdraw-request', authenticate, requireActive, async (req, res) =
     if (!phone || !/^(07|01)\d{8}$/.test(phone.trim()))
       return res.status(400).json({ error: 'Enter a valid Kenyan M-Pesa number (07XXXXXXXX)' });
 
-    // Block if already has a pending withdrawal
     const { data: pendingWD } = await supabase.from('withdrawals')
       .select('id').eq('user_id', user.id).eq('status', 'pending').maybeSingle();
     if (pendingWD)
       return res.status(429).json({ error: 'You already have a pending withdrawal request. Wait for it to be processed.' });
 
-    // Atomically deduct balance — prevents double submission
+    // Atomically deduct balance
     const { error: deductErr } = await supabase.from('users')
       .update({ wallet_balance: Number(user.wallet_balance) - amt })
       .eq('id', user.id)
-      .eq('wallet_balance', user.wallet_balance); // optimistic lock
+      .eq('wallet_balance', user.wallet_balance);
     if (deductErr)
       return res.status(409).json({ error: 'Balance changed. Please refresh and try again.' });
+
+    invalidateUserCache(user.id);
 
     await supabase.from('withdrawals').insert({
       user_id: user.id, amount: amt,
@@ -202,8 +210,6 @@ router.post('/withdraw-request', authenticate, requireActive, async (req, res) =
 });
 
 // ── POST /api/payments/callback — Paystack Webhook ────────────
-// NOTE: Withdrawals are NOT processed here — admin handles them manually.
-// Signature is verified upstream in server.js before this handler runs.
 router.post('/callback', async (req, res) => {
   try {
     console.log('[Paystack Callback] Received:', JSON.stringify(req.body));
@@ -211,7 +217,6 @@ router.post('/callback', async (req, res) => {
     const event = req.body.event;
     const data = req.body.data || {};
 
-    // Only act on successful charge events; ack everything else quietly.
     if (event !== 'charge.success') {
       return res.status(200).json({ message: 'OK' });
     }
@@ -219,7 +224,7 @@ router.post('/callback', async (req, res) => {
     const ref = data.reference;
     const payStatus = (data.status || '').toUpperCase();
     const mpesaCode = data.id || data.reference || null;
-    const paidAmount = Number(data.amount || 0) / 100; // Paystack sends amount in cents
+    const paidAmount = Number(data.amount || 0) / 100;
 
     if (!ref) {
       console.warn('[Callback] Missing reference');
@@ -234,7 +239,6 @@ router.post('/callback', async (req, res) => {
       return res.status(200).json({ message: 'OK' });
     }
 
-    // Idempotency — skip if already processed
     if (txn.status !== 'pending') {
       console.log('[Callback] Already processed:', ref);
       return res.status(200).json({ message: 'OK' });
@@ -242,10 +246,17 @@ router.post('/callback', async (req, res) => {
 
     const isSuccess = ['SUCCESS', 'COMPLETE', 'COMPLETED'].includes(payStatus);
 
-    await supabase.from('transactions').update({
+    // Atomic update — only update if still pending
+    const { data: updated } = await supabase.from('transactions').update({
       status: isSuccess ? 'completed' : 'failed',
       mpesa_code: mpesaCode,
-    }).eq('paystack_reference', ref);
+    }).eq('paystack_reference', ref).eq('status', 'pending')
+      .select('id');
+
+    if (!updated || updated.length === 0) {
+      console.log('[Callback] Race condition — already processed:', ref);
+      return res.status(200).json({ message: 'OK' });
+    }
 
     if (!isSuccess) {
       console.log('[Callback] Payment failed. Ref:', ref, 'Status:', payStatus);
@@ -257,14 +268,36 @@ router.post('/callback', async (req, res) => {
     res.status(200).json({ message: 'Callback processed' });
   } catch (err) {
     console.error('[Callback] Error:', err);
-    res.status(200).json({ message: 'OK' }); // Always 200 to stop retries
+    res.status(200).json({ message: 'OK' });
   }
 });
 
-// ── GET /api/payments/status/:reference — Live payment status ──
-// Used by the frontend to detect completed / cancelled / timed-out
-// payments automatically instead of staying "pending" forever.
+// ── GET /api/payments/status/:reference — DB-only status ──────
 router.get('/status/:reference', authenticate, async (req, res) => {
+  try {
+    const { reference } = req.params;
+    const { data: txn } = await supabase.from('transactions')
+      .select('status, type, amount, created_at')
+      .eq('paystack_reference', reference)
+      .eq('user_id', req.user.id)
+      .maybeSingle();
+
+    if (!txn) return res.status(404).json({ error: 'Transaction not found' });
+
+    return res.json({
+      status: txn.status,
+      type: txn.type,
+      amount: txn.amount,
+      created_at: txn.created_at,
+    });
+  } catch (err) {
+    console.error('[Status] Error:', err.message);
+    res.status(500).json({ error: 'Failed to check payment status' });
+  }
+});
+
+// ── POST /api/payments/verify/:reference — Manual verification ─
+router.post('/verify/:reference', authenticate, async (req, res) => {
   try {
     const { reference } = req.params;
     const { data: txn } = await supabase.from('transactions')
@@ -275,65 +308,72 @@ router.get('/status/:reference', authenticate, async (req, res) => {
 
     if (!txn) return res.status(404).json({ error: 'Transaction not found' });
 
-    // Already final — return stored result.
     if (txn.status !== 'pending') {
       return res.json({
-        status: txn.status === 'completed' ? 'completed' : 'failed',
-        transaction_status: txn.status,
+        status: txn.status,
+        message: txn.status === 'completed' ? 'Payment already completed.' : 'Payment failed.',
       });
     }
 
-    // Still pending → ask Paystack what actually happened.
     let live = null;
     try {
       live = await checkTransactionStatus(reference);
     } catch (e) {
-      console.error('[Status] Paystack verify failed:', e.message);
+      console.error('[Verify] Paystack verify failed:', e.message);
+      return res.json({ status: 'pending', message: 'Unable to verify with Paystack. Please wait and try again.' });
     }
 
-    const payStackStatus = (live?.data?.status || '').toLowerCase();
-    const ageMs = Date.now() - new Date(txn.created_at).getTime();
+    const payStatus = (live?.data?.status || '').toLowerCase();
+    const mpesaCode = live?.data?.id || null;
+    const paidAmount = Number(live?.data?.amount || 0) / 100;
 
-    // ── Determine final outcome as fast as possible ──
     let finalStatus = 'pending';
 
-    if (payStackStatus === 'success') {
+    if (payStatus === 'success') {
       finalStatus = 'completed';
-    } else if (['abandoned', 'failed', 'cancelled', 'cancelled_by_user', 'timeout', 'unpaid', 'unknown_transaction', 'not_found'].includes(payStackStatus)) {
-      // User cancelled, or Paystack confirms the charge did not go through.
+    } else if (['abandoned', 'failed', 'cancelled', 'cancelled_by_user', 'timeout', 'unpaid', 'unknown_transaction', 'not_found'].includes(payStatus)) {
       finalStatus = 'failed';
-    } else if (ageMs >= 60 * 1000) {
-      // No confirmation within 60s → STK prompt expired / user did nothing.
-      finalStatus = 'failed';
+    } else {
+      const ageMs = Date.now() - new Date(txn.created_at).getTime();
+      if (ageMs >= 90 * 1000) {
+        finalStatus = 'failed';
+      }
     }
-    // Otherwise still pending while the user has time to enter their PIN.
+
+    if (finalStatus === 'pending') {
+      return res.json({ status: 'pending', message: 'Payment still processing. Please wait...' });
+    }
+
+    // Atomic update — only update if still pending
+    const { data: updated } = await supabase.from('transactions')
+      .update({ status: finalStatus, mpesa_code: mpesaCode })
+      .eq('paystack_reference', reference)
+      .eq('status', 'pending')
+      .select('id');
+
+    if (!updated || updated.length === 0) {
+      const { data: current } = await supabase.from('transactions')
+        .select('status').eq('paystack_reference', reference).maybeSingle();
+      return res.json({ status: current?.status || finalStatus, message: 'Payment already processed.' });
+    }
 
     if (finalStatus === 'completed') {
-      const mpesaCode = live?.data?.id || null;
-      await supabase.from('transactions')
-        .update({ status: 'completed', mpesa_code: mpesaCode })
-        .eq('paystack_reference', reference);
-      await applyPaymentEffects(txn, mpesaCode, Number(live?.data?.amount || 0) / 100);
-    } else if (finalStatus === 'failed') {
-      await supabase.from('transactions')
-        .update({ status: 'failed' })
-        .eq('paystack_reference', reference);
+      await applyPaymentEffects(txn, mpesaCode, paidAmount);
     }
 
     return res.json({
       status: finalStatus,
-      message: finalStatus === 'failed'
-        ? 'Payment cancelled or timed out. Please try again.'
-        : (finalStatus === 'completed' ? 'Payment completed.' : 'Waiting for payment...'),
+      message: finalStatus === 'completed'
+        ? 'Payment completed successfully.'
+        : 'Payment failed or was cancelled.',
     });
   } catch (err) {
-    console.error('[Status] Error:', err.message);
-    res.status(500).json({ error: 'Failed to check payment status' });
+    console.error('[Verify] Error:', err.message);
+    res.status(500).json({ error: 'Failed to verify payment' });
   }
 });
 
 // ── Apply the effect of a successful payment ──────────────────
-// Shared by the webhook and the live status endpoint.
 async function applyPaymentEffects(txn, mpesaCode, paidAmount) {
   const { data: user } = await supabase.from('users')
     .select('*').eq('id', txn.user_id).maybeSingle();
@@ -342,6 +382,7 @@ async function applyPaymentEffects(txn, mpesaCode, paidAmount) {
   if (txn.type === 'activation') {
     if (user.status !== 'active') {
       await supabase.from('users').update({ status: 'active' }).eq('id', user.id);
+      invalidateUserCache(user.id);
       console.log('[Payment] User activated:', user.email);
       if (user.referred_by) await grantReferralBonus(user, 'activation');
     }
@@ -350,14 +391,15 @@ async function applyPaymentEffects(txn, mpesaCode, paidAmount) {
     const pkg_name = pkgMatch?.[1]?.toLowerCase();
     if (pkg_name && PACKAGES[pkg_name]) {
       await supabase.from('users').update({ package_level: pkg_name }).eq('id', user.id);
+      invalidateUserCache(user.id);
       console.log('[Payment] Package upgraded:', user.email, '->', pkg_name);
       if (user.referred_by) await grantReferralBonus(user, 'package', pkg_name);
     }
   } else if (txn.type === 'deposit') {
+    // Atomic increment — no read-modify-write race
     const credit = paidAmount || Number(txn.amount);
-    await supabase.from('users')
-      .update({ wallet_balance: (Number(user.wallet_balance) || 0) + credit })
-      .eq('id', user.id);
+    await supabase.rpc('increment_wallet', { user_id: txn.user_id, amount: credit });
+    invalidateUserCache(txn.user_id);
     console.log('[Payment] Deposit credited:', user.email, 'KES', credit);
   }
   return true;
@@ -367,7 +409,7 @@ async function applyPaymentEffects(txn, mpesaCode, paidAmount) {
 async function grantReferralBonus(user, event, pkg_name = null) {
   try {
     const { data: referrer } = await supabase.from('users')
-      .select('*').eq('referral_code', user.referred_by).maybeSingle();
+      .select('id, referral_code, wallet_balance').eq('referral_code', user.referred_by).maybeSingle();
     if (!referrer) return;
 
     const bonusMap = {
@@ -378,15 +420,15 @@ async function grantReferralBonus(user, event, pkg_name = null) {
     const bonus = bonusMap[event];
     if (!bonus) return;
 
-    // Check not already granted
     const { data: existing } = await supabase.from('referral_earnings')
       .select('id').eq('referrer_id', referrer.id).eq('referred_id', user.id)
       .eq('event', event).maybeSingle();
-    if (existing) return; // idempotent
+    if (existing) return;
 
-    await supabase.from('users')
-      .update({ wallet_balance: Number(referrer.wallet_balance) + bonus })
-      .eq('id', referrer.id);
+    // Atomic increment for referrer wallet
+    await supabase.rpc('increment_wallet', { user_id: referrer.id, amount: bonus });
+    invalidateUserCache(referrer.id);
+
     await supabase.from('referral_earnings').insert({
       referrer_id: referrer.id, referred_id: user.id, event, amount: bonus,
     });
@@ -394,7 +436,7 @@ async function grantReferralBonus(user, event, pkg_name = null) {
       user_id: referrer.id, type: 'referral', amount: bonus, status: 'completed',
       description: `Referral bonus — ${user.full_name} ${event}${pkg_name ? ' (' + pkg_name + ')' : ''}`,
     });
-    console.log('[Referral] Bonus granted:', referrer.email, event, bonus);
+    console.log('[Referral] Bonus granted:', referrer.id, event, bonus);
   } catch (err) {
     console.error('[Referral] Bonus error:', err.message);
   }

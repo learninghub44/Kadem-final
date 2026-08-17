@@ -100,3 +100,18 @@ CREATE INDEX idx_users_referral_code ON users(referral_code);
 CREATE INDEX idx_transactions_user_id ON transactions(user_id);
 CREATE INDEX idx_task_submissions_user_id ON task_submissions(user_id);
 CREATE INDEX idx_withdrawals_user_id ON withdrawals(user_id);
+
+-- ATOMIC WALLET INCREMENT FUNCTION
+-- Use this instead of read-modify-write to prevent race conditions
+CREATE OR REPLACE FUNCTION increment_wallet(user_id UUID, amount NUMERIC)
+RETURNS NUMERIC AS $$
+DECLARE
+  new_balance NUMERIC;
+BEGIN
+  UPDATE users
+  SET wallet_balance = wallet_balance + amount
+  WHERE id = user_id
+  RETURNING wallet_balance INTO new_balance;
+  RETURN new_balance;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;

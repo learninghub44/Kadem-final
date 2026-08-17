@@ -32,10 +32,12 @@ const ActivationScreen = ({ user }) => {
       setPhase('waiting');
 
       const started = Date.now();
-      const POLL_MS = 3000;
-      const TIMEOUT_MS = 75000;
+      const POLL_MS = 5000;
+      const VERIFY_AFTER_MS = 30000;
+      const TIMEOUT_MS = 90000;
       let poll = null;
       let hardStop = null;
+      let verified = false;
 
       const stopTimers = () => {
         if (poll) clearInterval(poll);
@@ -56,31 +58,56 @@ const ActivationScreen = ({ user }) => {
       };
 
       poll = setInterval(async () => {
-        if (Date.now() - started > TIMEOUT_MS) return;
+        const elapsed = Date.now() - started;
+        if (elapsed > TIMEOUT_MS) return;
+
         try {
+          // First check DB status
           const { data } = await api.get(`/payments/status/${reference}`);
+
           if (data.status === 'completed') {
             await refreshUser();
             finish('completed', 'Payment received! Account activated.');
+            return;
           } else if (data.status === 'failed') {
-            finish('failed', 'You have cancelled or not entered the PIN. Please try again.');
+            finish('failed', 'Payment failed or was cancelled. Please try again.');
+            return;
+          }
+
+          // Still pending — after 30 seconds, ask backend to verify with Paystack
+          if (elapsed >= VERIFY_AFTER_MS && !verified) {
+            verified = true;
+            try {
+              const { data: verifyData } = await api.post(`/payments/verify/${reference}`);
+              if (verifyData.status === 'completed') {
+                await refreshUser();
+                finish('completed', 'Payment received! Account activated.');
+                return;
+              } else if (verifyData.status === 'failed') {
+                finish('failed', 'Payment failed or was cancelled. Please try again.');
+                return;
+              }
+            } catch (verifyErr) {
+              console.error('[Activation] Verify failed:', verifyErr);
+            }
           }
         } catch { /* transient — keep polling */ }
       }, POLL_MS);
 
       hardStop = setTimeout(async () => {
+        // Final attempt — verify with Paystack
         try {
-          const { data } = await api.get(`/payments/status/${reference}`);
-          if (data.status === 'completed') {
+          const { data: verifyData } = await api.post(`/payments/verify/${reference}`);
+          if (verifyData.status === 'completed') {
             await refreshUser();
             finish('completed', 'Payment received! Account activated.');
           } else {
-            finish('failed', 'You have cancelled or not entered the PIN. Please try again.');
+            finish('failed', 'Payment timed out. Please try again.');
           }
         } catch {
-          finish('failed', 'Timeout. Please try again.');
+          finish('failed', 'Payment timed out. Please try again.');
         }
-      }, TIMEOUT_MS + 3000);
+      }, TIMEOUT_MS + 2000);
     } catch (err) {
       setPhase('idle');
       toast.error(err.response?.data?.error || 'Activation failed. Please try again.');
