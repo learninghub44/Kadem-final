@@ -102,9 +102,15 @@ const paymentHourLimiter = rateLimit({
 });
 
 const statusLimiter = rateLimit({
-  windowMs: 60 * 1000, max: 60, // status polling: every 3s is ~20/min
+  windowMs: 60 * 1000, max: 60, // status polling: every 5s is ~12/min
   standardHeaders: true, legacyHeaders: false,
   message: { error: 'Too many status checks. Please slow down.' },
+});
+
+const verifyLimiter = rateLimit({
+  windowMs: 60 * 1000, max: 10, // verify endpoint: max 10 per minute
+  standardHeaders: true, legacyHeaders: false,
+  message: { error: 'Too many verification attempts. Please try again later.' },
 });
 
 const withdrawalLimiter = rateLimit({
@@ -130,6 +136,7 @@ app.use('/api/payments/buy-package', paymentLimiter, paymentHourLimiter);
 app.use('/api/payments/deposit', paymentLimiter, paymentHourLimiter);
 app.use('/api/payments/withdraw-request', withdrawalLimiter, paymentHourLimiter);
 app.use('/api/payments/status', statusLimiter);
+app.use('/api/payments/verify', verifyLimiter);
 app.use('/api/payments/callback', callbackLimiter);
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);

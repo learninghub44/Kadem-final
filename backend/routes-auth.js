@@ -145,7 +145,6 @@ router.post('/login', authLimiter, async (req, res) => {
 
     const { password_hash, ...safeUser } = user;
     const token = signToken(user.id);
-    // Cache the user data on login
     invalidateUserCache(user.id);
     res.json({ message: 'Login successful', token, user: safeUser });
   } catch (err) {

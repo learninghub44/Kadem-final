@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const supabase = require('./supabase');
-const { authenticate } = require('./auth');
+const { authenticate, invalidateUserCache } = require('./auth');
 
 router.use(authenticate);
 
@@ -74,6 +74,8 @@ router.patch('/profile', async (req, res) => {
       .select('id, full_name, phone, email, status, wallet_balance, package_level, referral_code')
       .single();
     if (error) throw error;
+
+    invalidateUserCache(req.user.id);
     res.json({ message: 'Profile updated', user: data });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update profile' });

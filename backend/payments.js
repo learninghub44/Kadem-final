@@ -27,14 +27,14 @@ router.post('/activate', authenticate, async (req, res) => {
 
     // Attempt cap: 3 failed activation attempts → wait 5 minutes
     const FIVE_MIN = 5 * 60 * 1000;
-    const { data: failedAttempts } = await supabase.from('transactions')
+    const { count: failedCount } = await supabase.from('transactions')
       .select('id', { count: 'exact' })
       .eq('user_id', user.id)
       .eq('type', 'activation')
       .eq('status', 'failed')
       .gte('created_at', new Date(Date.now() - FIVE_MIN).toISOString());
 
-    if ((failedAttempts?.length || 0) >= 3) {
+    if ((failedCount || 0) >= 3) {
       return res.status(429).json({
         error: 'Too many failed attempts. Please wait 5 minutes before trying again.',
         retry_after: 300,
@@ -239,6 +239,7 @@ router.post('/callback', async (req, res) => {
       return res.status(200).json({ message: 'OK' });
     }
 
+    // Already processed
     if (txn.status !== 'pending') {
       console.log('[Callback] Already processed:', ref);
       return res.status(200).json({ message: 'OK' });
@@ -253,6 +254,7 @@ router.post('/callback', async (req, res) => {
     }).eq('paystack_reference', ref).eq('status', 'pending')
       .select('id');
 
+    // If no row was updated, another request already processed this
     if (!updated || updated.length === 0) {
       console.log('[Callback] Race condition — already processed:', ref);
       return res.status(200).json({ message: 'OK' });
@@ -308,6 +310,7 @@ router.post('/verify/:reference', authenticate, async (req, res) => {
 
     if (!txn) return res.status(404).json({ error: 'Transaction not found' });
 
+    // Already final — return stored result
     if (txn.status !== 'pending') {
       return res.json({
         status: txn.status,
@@ -315,6 +318,7 @@ router.post('/verify/:reference', authenticate, async (req, res) => {
       });
     }
 
+    // Check with Paystack
     let live = null;
     try {
       live = await checkTransactionStatus(reference);
@@ -357,6 +361,7 @@ router.post('/verify/:reference', authenticate, async (req, res) => {
       return res.json({ status: current?.status || finalStatus, message: 'Payment already processed.' });
     }
 
+    // Apply effects for successful payment
     if (finalStatus === 'completed') {
       await applyPaymentEffects(txn, mpesaCode, paidAmount);
     }
@@ -409,7 +414,7 @@ async function applyPaymentEffects(txn, mpesaCode, paidAmount) {
 async function grantReferralBonus(user, event, pkg_name = null) {
   try {
     const { data: referrer } = await supabase.from('users')
-      .select('id, referral_code, wallet_balance').eq('referral_code', user.referred_by).maybeSingle();
+      .select('id, referral_code').eq('referral_code', user.referred_by).maybeSingle();
     if (!referrer) return;
 
     const bonusMap = {
@@ -420,6 +425,7 @@ async function grantReferralBonus(user, event, pkg_name = null) {
     const bonus = bonusMap[event];
     if (!bonus) return;
 
+    // Check not already granted
     const { data: existing } = await supabase.from('referral_earnings')
       .select('id').eq('referrer_id', referrer.id).eq('referred_id', user.id)
       .eq('event', event).maybeSingle();

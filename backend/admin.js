@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const supabase = require('./supabase');
-const { authenticate, requireAdmin } = require('./auth');
+const { authenticate, requireAdmin, invalidateUserCache } = require('./auth');
 const { initiateWithdrawal } = require('./paystack');
 
 router.use(authenticate, requireAdmin);
@@ -59,6 +59,7 @@ router.patch('/users/:id', async (req, res) => {
 
     const { data, error } = await supabase.from('users').update(updates).eq('id', id).select().single();
     if (error) throw error;
+    invalidateUserCache(id);
     res.json({ message: 'User updated', user: data });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update user' });
@@ -149,8 +150,8 @@ router.patch('/submissions/:id', async (req, res) => {
     }).eq('id', id);
 
     if (status === 'approved') {
-      const { data: user } = await supabase.from('users').select('wallet_balance').eq('id', submission.user_id).single();
-      await supabase.from('users').update({ wallet_balance: Number(user.wallet_balance) + Number(submission.earning_amount) }).eq('id', submission.user_id);
+      await supabase.rpc('increment_wallet', { user_id: submission.user_id, amount: Number(submission.earning_amount) });
+      invalidateUserCache(submission.user_id);
       await supabase.from('transactions').insert({
         user_id: submission.user_id, type: 'earning',
         amount: submission.earning_amount, status: 'completed',
@@ -221,11 +222,10 @@ router.patch('/withdrawals/:id', async (req, res) => {
       await supabase.from('transactions').update({ status: 'completed' })
         .eq('user_id', withdrawal.user_id).eq('type', 'withdrawal').eq('status', 'pending');
       res.json({ message: 'Withdrawal marked as paid manually' });
-    } else {
-      // Refund wallet
-      await supabase.from('users').update({
-        wallet_balance: Number(withdrawal.users.wallet_balance) + Number(withdrawal.amount),
-      }).eq('id', withdrawal.user_id);
+     } else {
+      // Refund wallet (reject)
+      await supabase.rpc('increment_wallet', { user_id: withdrawal.user_id, amount: Number(withdrawal.amount) });
+      invalidateUserCache(withdrawal.user_id);
       await supabase.from('withdrawals').update({ status: 'rejected', admin_note: admin_note || null, processed_at: new Date().toISOString() }).eq('id', id);
       await supabase.from('transactions').update({ status: 'failed' })
         .eq('user_id', withdrawal.user_id).eq('type', 'withdrawal').eq('status', 'pending');
@@ -253,6 +253,12 @@ router.patch('/transactions/:id', async (req, res) => {
     // If manually completing an activation, also activate the user
     if (status === 'completed' && txn.type === 'activation') {
       await supabase.from('users').update({ status: 'active' }).eq('id', txn.user_id);
+      invalidateUserCache(txn.user_id);
+    }
+
+    if (status === 'completed' && txn.type === 'deposit') {
+      await supabase.rpc('increment_wallet', { user_id: txn.user_id, amount: Number(txn.amount) });
+      invalidateUserCache(txn.user_id);
     }
 
     res.json({ message: `Transaction marked as ${status}` });
