@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const router = express.Router();
 const supabase = require('./supabase');
-const { initiateSTKPush } = require('./paystack');
+const { initiateSTKPush, checkTransactionStatus } = require('./paystack');
 const { authenticate, requireActive, requireAdmin } = require('./auth');
 
 const PACKAGES = {
@@ -27,14 +27,33 @@ router.post('/activate', authenticate, async (req, res) => {
 
     // Prevent duplicate pending activation
     const { data: existingPending } = await supabase.from('transactions')
-      .select('id, created_at').eq('user_id', user.id)
+      .select('id, created_at, paystack_reference').eq('user_id', user.id)
       .eq('type', 'activation').eq('status', 'pending')
       .order('created_at', { ascending: false }).limit(1).maybeSingle();
 
     if (existingPending) {
       const age = Date.now() - new Date(existingPending.created_at).getTime();
-      if (age < 5 * 60 * 1000) // 5 minutes
-        return res.status(429).json({ error: 'STK push already sent. Please check your phone and enter your PIN.' });
+      if (age < 90 * 1000) // 90 seconds — still giving user time to enter PIN
+        return res.status(429).json({ error: 'STK push already sent. Please check your phone and enter your M-Pesa PIN.' });
+
+      // Stale pending → ask Paystack what actually happened.
+      try {
+        const live = await checkTransactionStatus(existingPending.paystack_reference);
+        const st = (live?.data?.status || '').toLowerCase();
+        if (st === 'success') {
+          // Paid but effect not applied yet — apply it now.
+          await supabase.from('transactions')
+            .update({ status: 'completed', mpesa_code: live?.data?.id || null })
+            .eq('id', existingPending.id);
+          await applyPaymentEffects(existingPending, live?.data?.id || null, Number(live?.data?.amount || 0) / 100);
+          return res.status(400).json({ error: 'Payment already completed. Activating your account now.' });
+        }
+        // abandoned/failed/timed-out → allow a fresh attempt
+        await supabase.from('transactions').update({ status: 'failed' }).eq('id', existingPending.id);
+      } catch (e) {
+        console.error('[Activate] Could not verify stale pending:', e.message);
+        return res.status(429).json({ error: 'The previous payment is still being processed. Please check your phone and try again shortly.' });
+      }
     }
 
     const reference = `ACT-${user.id.slice(0, 8)}-${Date.now()}`;
@@ -44,7 +63,7 @@ router.post('/activate', authenticate, async (req, res) => {
       status: 'pending', paystack_reference: reference,
       description: 'Account activation fee',
     });
-    res.json({ message: 'STK push sent. Enter your M-Pesa PIN within 30 seconds.', reference });
+    res.json({ message: 'STK push sent. Check your phone and enter your M-Pesa PIN.', reference });
   } catch (err) {
     console.error('[Activate] Error:', err.message);
     const msg = err.message || '';
@@ -217,38 +236,7 @@ router.post('/callback', async (req, res) => {
       return res.status(200).json({ message: 'OK' });
     }
 
-    const { data: user } = await supabase.from('users')
-      .select('*').eq('id', txn.user_id).maybeSingle();
-    if (!user) return res.status(200).json({ message: 'OK' });
-
-    // ── Activation ──
-    if (txn.type === 'activation') {
-      if (user.status !== 'active') {
-        await supabase.from('users').update({ status: 'active' }).eq('id', user.id);
-        console.log('[Callback] User activated:', user.email);
-        if (user.referred_by) await grantReferralBonus(user, 'activation');
-      }
-    }
-
-    // ── Package upgrade ──
-    if (txn.type === 'package') {
-      const pkgMatch = txn.description?.match(/^(\w+)\s+package/i);
-      const pkg_name = pkgMatch?.[1]?.toLowerCase();
-      if (pkg_name && PACKAGES[pkg_name]) {
-        await supabase.from('users').update({ package_level: pkg_name }).eq('id', user.id);
-        console.log('[Callback] Package upgraded:', user.email, '->', pkg_name);
-        if (user.referred_by) await grantReferralBonus(user, 'package', pkg_name);
-      }
-    }
-
-    // ── Deposit ──
-    if (txn.type === 'deposit') {
-      const credit = paidAmount || Number(txn.amount);
-      await supabase.from('users')
-        .update({ wallet_balance: Number(user.wallet_balance) + credit })
-        .eq('id', user.id);
-      console.log('[Callback] Deposit credited:', user.email, 'KES', credit);
-    }
+    await applyPaymentEffects(txn, mpesaCode, paidAmount);
 
     res.status(200).json({ message: 'Callback processed' });
   } catch (err) {
@@ -256,6 +244,110 @@ router.post('/callback', async (req, res) => {
     res.status(200).json({ message: 'OK' }); // Always 200 to stop retries
   }
 });
+
+// ── GET /api/payments/status/:reference — Live payment status ──
+// Used by the frontend to detect completed / cancelled / timed-out
+// payments automatically instead of staying "pending" forever.
+router.get('/status/:reference', authenticate, async (req, res) => {
+  try {
+    const { reference } = req.params;
+    const { data: txn } = await supabase.from('transactions')
+      .select('*')
+      .eq('paystack_reference', reference)
+      .eq('user_id', req.user.id)
+      .maybeSingle();
+
+    if (!txn) return res.status(404).json({ error: 'Transaction not found' });
+
+    // Already final — return stored result.
+    if (txn.status !== 'pending') {
+      return res.json({
+        status: txn.status === 'completed' ? 'completed' : 'failed',
+        transaction_status: txn.status,
+      });
+    }
+
+    // Still pending → ask Paystack what actually happened.
+    let live = null;
+    try {
+      live = await checkTransactionStatus(reference);
+    } catch (e) {
+      console.error('[Status] Paystack verify failed:', e.message);
+    }
+
+    const payStackStatus = (live?.data?.status || '').toLowerCase();
+    const ageMs = Date.now() - new Date(txn.created_at).getTime();
+
+    // Still being processed (user has time to enter PIN).
+    if (['pending', 'processing', 'awaiting_confirmation'].includes(payStackStatus) && ageMs < 120 * 1000) {
+      return res.json({ status: 'pending' });
+    }
+
+    // Determine final outcome.
+    let finalStatus = 'pending';
+    if (payStackStatus === 'success') {
+      finalStatus = 'completed';
+    } else if (['abandoned', 'failed', 'cancelled', 'cancelled_by_user', 'timeout', 'unpaid'].includes(payStackStatus)) {
+      finalStatus = 'failed';
+    } else if (ageMs > 120 * 1000) {
+      // No PIN entered within the window → treat as cancelled/timed out.
+      finalStatus = payStackStatus === 'success' ? 'completed' : 'failed';
+    }
+
+    if (finalStatus === 'completed') {
+      const mpesaCode = live?.data?.id || null;
+      await supabase.from('transactions')
+        .update({ status: 'completed', mpesa_code: mpesaCode })
+        .eq('paystack_reference', reference);
+      await applyPaymentEffects(txn, mpesaCode, Number(live?.data?.amount || 0) / 100);
+    } else if (finalStatus === 'failed') {
+      await supabase.from('transactions')
+        .update({ status: 'failed' })
+        .eq('paystack_reference', reference);
+    }
+
+    return res.json({
+      status: finalStatus,
+      message: finalStatus === 'failed'
+        ? 'Payment cancelled or timed out. Please try again.'
+        : (finalStatus === 'completed' ? 'Payment completed.' : 'Waiting for payment...'),
+    });
+  } catch (err) {
+    console.error('[Status] Error:', err.message);
+    res.status(500).json({ error: 'Failed to check payment status' });
+  }
+});
+
+// ── Apply the effect of a successful payment ──────────────────
+// Shared by the webhook and the live status endpoint.
+async function applyPaymentEffects(txn, mpesaCode, paidAmount) {
+  const { data: user } = await supabase.from('users')
+    .select('*').eq('id', txn.user_id).maybeSingle();
+  if (!user) return false;
+
+  if (txn.type === 'activation') {
+    if (user.status !== 'active') {
+      await supabase.from('users').update({ status: 'active' }).eq('id', user.id);
+      console.log('[Payment] User activated:', user.email);
+      if (user.referred_by) await grantReferralBonus(user, 'activation');
+    }
+  } else if (txn.type === 'package') {
+    const pkgMatch = txn.description?.match(/^(\w+)\s+package/i);
+    const pkg_name = pkgMatch?.[1]?.toLowerCase();
+    if (pkg_name && PACKAGES[pkg_name]) {
+      await supabase.from('users').update({ package_level: pkg_name }).eq('id', user.id);
+      console.log('[Payment] Package upgraded:', user.email, '->', pkg_name);
+      if (user.referred_by) await grantReferralBonus(user, 'package', pkg_name);
+    }
+  } else if (txn.type === 'deposit') {
+    const credit = paidAmount || Number(txn.amount);
+    await supabase.from('users')
+      .update({ wallet_balance: (Number(user.wallet_balance) || 0) + credit })
+      .eq('id', user.id);
+    console.log('[Payment] Deposit credited:', user.email, 'KES', credit);
+  }
+  return true;
+}
 
 // ── Referral bonus helper ─────────────────────────────────────
 async function grantReferralBonus(user, event, pkg_name = null) {

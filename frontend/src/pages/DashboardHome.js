@@ -15,54 +15,104 @@ const PACKAGES = [
 const ActivationScreen = ({ user }) => {
   const { refreshUser, logout } = useAuth();
   const [phone, setPhone] = useState(user?.phone || '');
-  const [activating, setActivating] = useState(false);
+  const [phase, setPhase] = useState('idle'); // idle | sending | waiting | done
+  const [notice, setNotice] = useState('');
 
   const handleActivate = async () => {
     if (!phone || !/^(07|01)\d{8}$/.test(phone.trim())) {
       toast.error('Enter a valid M-Pesa number (07XXXXXXXX)');
       return;
     }
-    setActivating(true);
+    setPhase('sending');
+    setNotice('');
     try {
-      await api.post('/payments/activate', { phone: phone.trim() });
-      toast.success('STK Push sent! Check your phone and enter your M-Pesa PIN.');
-      const poll = setInterval(async () => {
-        const updated = await refreshUser();
-        if (updated?.status === 'active') {
-          clearInterval(poll);
-          toast.success('Account activated! You can now access all features.');
+      const res = await api.post('/payments/activate', { phone: phone.trim() });
+      const reference = res.data.reference;
+      toast.success('Check your phone and enter your M-Pesa PIN.');
+      setPhase('waiting');
+
+      const started = Date.now();
+      const POLL_MS = 3000;
+      const TIMEOUT_MS = 120000;
+      let poll = null;
+      let hardStop = null;
+
+      const stopTimers = () => {
+        if (poll) clearInterval(poll);
+        if (hardStop) clearTimeout(hardStop);
+      };
+
+      const finish = (status, msg) => {
+        stopTimers();
+        if (status === 'completed') {
+          setPhase('done');
+          setNotice(msg);
+          toast.success(msg);
+        } else {
+          setPhase('idle');
+          setNotice(msg);
+          toast.error(msg);
         }
-      }, 5000);
-      setTimeout(() => clearInterval(poll), 60000);
+      };
+
+      poll = setInterval(async () => {
+        if (Date.now() - started > TIMEOUT_MS) return;
+        try {
+          const { data } = await api.get(`/payments/status/${reference}`);
+          if (data.status === 'completed') {
+            await refreshUser();
+            finish('completed', 'Payment received! Account activated.');
+          } else if (data.status === 'failed') {
+            finish('failed', 'You have cancelled or not entered the PIN. Please try again.');
+          }
+        } catch { /* transient — keep polling */ }
+      }, POLL_MS);
+
+      hardStop = setTimeout(async () => {
+        try {
+          const { data } = await api.get(`/payments/status/${reference}`);
+          if (data.status === 'completed') {
+            await refreshUser();
+            finish('completed', 'Payment received! Account activated.');
+          } else {
+            finish('failed', 'You have cancelled or not entered the PIN. Please try again.');
+          }
+        } catch {
+          finish('failed', 'Timeout. Please try again.');
+        }
+      }, TIMEOUT_MS + 3000);
     } catch (err) {
+      setPhase('idle');
       toast.error(err.response?.data?.error || 'Activation failed. Please try again.');
-    } finally {
-      setActivating(false);
     }
   };
 
+  const waiting = phase === 'sending' || phase === 'waiting';
+
   return (
     <div style={{
-      minHeight: '80vh',
+      minHeight: '100vh',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      padding: 20,
+      padding: 16,
+      boxSizing: 'border-box',
     }}>
       <div style={{
         background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
         border: '2px solid #f59e0b',
         borderRadius: 20,
-        padding: 40,
+        padding: 'clamp(24px, 5vw, 40px)',
         textAlign: 'center',
-        maxWidth: 420,
+        maxWidth: 'min(420px, 92vw)',
         width: '100%',
         position: 'relative',
+        boxSizing: 'border-box',
       }}>
         <button
           onClick={() => { logout(); }}
           style={{
-            position: 'absolute', top: 16, right: 16,
+            position: 'absolute', top: 14, right: 16,
             background: 'none', border: 'none',
             color: '#64748b', cursor: 'pointer', fontSize: '0.8rem',
           }}
@@ -89,7 +139,7 @@ const ActivationScreen = ({ user }) => {
           Pay a one-time activation fee to unlock all features.
         </p>
         <div style={{
-          fontSize: '2.5rem',
+          fontSize: 'clamp(2rem, 8vw, 2.5rem)',
           fontWeight: 800,
           color: '#fff',
           margin: '20px 0',
@@ -109,8 +159,10 @@ const ActivationScreen = ({ user }) => {
               value={phone}
               onChange={e => setPhone(e.target.value)}
               placeholder="0712345678"
+              disabled={waiting}
               style={{
                 flex: 1,
+                minWidth: 0,
                 padding: '12px 16px',
                 borderRadius: 10,
                 border: '1px solid #334155',
@@ -125,27 +177,61 @@ const ActivationScreen = ({ user }) => {
 
         <button
           onClick={handleActivate}
-          disabled={activating}
+          disabled={waiting}
           style={{
             width: '100%',
             padding: '14px 0',
             borderRadius: 12,
             border: 'none',
-            background: activating ? '#92400e' : '#f59e0b',
-            color: activating ? '#fde68a' : '#000',
+            background: waiting ? '#92400e' : '#f59e0b',
+            color: waiting ? '#fde68a' : '#000',
             fontSize: '1rem',
             fontWeight: 700,
-            cursor: activating ? 'not-allowed' : 'pointer',
+            cursor: waiting ? 'not-allowed' : 'pointer',
             transition: 'all 0.2s',
           }}
         >
-          {activating ? 'Sending STK Push...' : 'Pay Now'}
+          {phase === 'sending'
+            ? 'Sending STK Push...'
+            : phase === 'waiting'
+              ? 'Waiting for PIN...'
+              : phase === 'done'
+                ? 'Done'
+                : 'Pay Now'}
         </button>
 
-        <p style={{ color: '#64748b', fontSize: '0.8rem', marginTop: 16 }}>
-          An M-Pesa prompt will be sent to the number above.
-          <br />Enter your PIN to complete payment.
-        </p>
+        {phase === 'waiting' && (
+          <p style={{
+            color: '#fbbf24', fontSize: '0.95rem', marginTop: 18, fontWeight: 600,
+          }}>
+            Check your phone and enter your M-Pesa PIN to complete payment.
+          </p>
+        )}
+
+        {phase === 'done' && (
+          <p style={{ color: '#22c55e', fontSize: '0.95rem', marginTop: 18, fontWeight: 600 }}>
+            Your payment was received. Unlocking your account...
+          </p>
+        )}
+
+        {notice && phase === 'idle' && (
+          <p style={{
+            color: '#f87171', fontSize: '0.9rem', marginTop: 18,
+            background: 'rgba(239,68,68,0.1)',
+            border: '1px solid rgba(239,68,68,0.3)',
+            borderRadius: 10,
+            padding: '10px 12px',
+          }}>
+            {notice}
+          </p>
+        )}
+
+        {phase === 'idle' && !notice && (
+          <p style={{ color: '#64748b', fontSize: '0.8rem', marginTop: 16 }}>
+            An M-Pesa prompt will be sent to the number above.
+            <br />Enter your PIN to complete payment.
+          </p>
+        )}
       </div>
     </div>
   );

@@ -35,9 +35,9 @@ export const DashboardLayout = () => {
       return <Navigate to="/dashboard" replace />;
     }
     return (
-      <main className="main-content" style={{ marginLeft: 0, minHeight: '100vh' }}>
-        <div className="page-content"><Outlet /></div>
-      </main>
+      <div style={{ minHeight: '100vh', width: '100%' }}>
+        <Outlet />
+      </div>
     );
   }
 

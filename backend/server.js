@@ -90,9 +90,33 @@ const globalLimiter = rateLimit({
 });
 
 const paymentLimiter = rateLimit({
-  windowMs: 60 * 1000, max: 5, // 5 payment attempts per minute
+  windowMs: 60 * 1000, max: 3, // 3 payment initiations per minute
   standardHeaders: true, legacyHeaders: false,
   message: { error: 'Too many payment requests. Please wait a moment.' },
+});
+
+const paymentHourLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, max: 10, // 10 payment attempts per hour
+  standardHeaders: true, legacyHeaders: false,
+  message: { error: 'Payment attempt limit reached for this hour. Please try again later.' },
+});
+
+const statusLimiter = rateLimit({
+  windowMs: 60 * 1000, max: 60, // status polling: every 3s is ~20/min
+  standardHeaders: true, legacyHeaders: false,
+  message: { error: 'Too many status checks. Please slow down.' },
+});
+
+const withdrawalLimiter = rateLimit({
+  windowMs: 60 * 1000, max: 2, // 2 withdrawal requests per minute
+  standardHeaders: true, legacyHeaders: false,
+  message: { error: 'Too many withdrawal requests. Please wait a moment.' },
+});
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: 10, // 10 login/register attempts per 15 min
+  standardHeaders: true, legacyHeaders: false,
+  message: { error: 'Too many attempts. Please try again in a few minutes.' },
 });
 
 const callbackLimiter = rateLimit({
@@ -101,10 +125,14 @@ const callbackLimiter = rateLimit({
 });
 
 app.use('/api/', globalLimiter);
-app.use('/api/payments/activate', paymentLimiter);
-app.use('/api/payments/buy-package', paymentLimiter);
-app.use('/api/payments/deposit', paymentLimiter);
+app.use('/api/payments/activate', paymentLimiter, paymentHourLimiter);
+app.use('/api/payments/buy-package', paymentLimiter, paymentHourLimiter);
+app.use('/api/payments/deposit', paymentLimiter, paymentHourLimiter);
+app.use('/api/payments/withdraw-request', withdrawalLimiter, paymentHourLimiter);
+app.use('/api/payments/status', statusLimiter);
 app.use('/api/payments/callback', callbackLimiter);
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/register', authLimiter);
 
 // ── Webhook signature verification for Paystack callback ─────
 // Paystack signs every webhook with HMAC-SHA512 of the raw body,
