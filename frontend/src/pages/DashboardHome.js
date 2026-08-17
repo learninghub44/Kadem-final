@@ -33,7 +33,7 @@ const ActivationScreen = ({ user }) => {
 
       const started = Date.now();
       const POLL_MS = 3000;
-      const TIMEOUT_MS = 120000;
+      const TIMEOUT_MS = 75000;
       let poll = null;
       let hardStop = null;
 
@@ -95,16 +95,17 @@ const ActivationScreen = ({ user }) => {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      padding: 16,
+      padding: 12,
       boxSizing: 'border-box',
+      overflowY: 'auto',
     }}>
       <div style={{
         background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
         border: '2px solid #f59e0b',
-        borderRadius: 20,
-        padding: 'clamp(24px, 5vw, 40px)',
+        borderRadius: 18,
+        padding: 'clamp(20px, 4vh, 32px)',
         textAlign: 'center',
-        maxWidth: 'min(420px, 92vw)',
+        maxWidth: 'min(400px, 94vw)',
         width: '100%',
         position: 'relative',
         boxSizing: 'border-box',
@@ -112,7 +113,7 @@ const ActivationScreen = ({ user }) => {
         <button
           onClick={() => { logout(); }}
           style={{
-            position: 'absolute', top: 14, right: 16,
+            position: 'absolute', top: 12, right: 14,
             background: 'none', border: 'none',
             color: '#64748b', cursor: 'pointer', fontSize: '0.8rem',
           }}
@@ -120,35 +121,35 @@ const ActivationScreen = ({ user }) => {
           Logout
         </button>
         <div style={{
-          width: 72,
-          height: 72,
+          width: 64,
+          height: 64,
           borderRadius: '50%',
           background: 'rgba(245, 158, 11, 0.15)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          margin: '0 auto 20px',
+          margin: '0 auto 14px',
         }}>
-          <Lock size={36} color="#f59e0b" />
+          <Lock size={32} color="#f59e0b" />
         </div>
 
-        <h1 style={{ color: '#f59e0b', fontSize: '1.5rem', marginBottom: 8 }}>
+        <h1 style={{ color: '#f59e0b', fontSize: '1.35rem', marginBottom: 6 }}>
           Activate Your Account
         </h1>
-        <p style={{ color: '#94a3b8', marginBottom: 8, fontSize: '0.95rem' }}>
-          Pay a one-time activation fee to unlock all features.
+        <p style={{ color: '#94a3b8', marginBottom: 6, fontSize: '0.9rem' }}>
+          Pay a one-time fee to unlock all features.
         </p>
         <div style={{
-          fontSize: 'clamp(2rem, 8vw, 2.5rem)',
+          fontSize: 'clamp(1.8rem, 7vw, 2.2rem)',
           fontWeight: 800,
           color: '#fff',
-          margin: '20px 0',
+          margin: '14px 0',
           fontFamily: 'Sora, sans-serif',
         }}>
           KES 150
         </div>
 
-        <div style={{ marginBottom: 24 }}>
+        <div style={{ marginBottom: 16 }}>
           <label style={{ display: 'block', textAlign: 'left', color: '#94a3b8', marginBottom: 6, fontSize: '0.85rem' }}>
             M-Pesa Phone Number
           </label>
@@ -163,7 +164,7 @@ const ActivationScreen = ({ user }) => {
               style={{
                 flex: 1,
                 minWidth: 0,
-                padding: '12px 16px',
+                padding: '12px 14px',
                 borderRadius: 10,
                 border: '1px solid #334155',
                 background: '#0f172a',

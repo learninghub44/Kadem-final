@@ -25,6 +25,22 @@ router.post('/activate', authenticate, async (req, res) => {
     if (!phoneToUse || !/^(07|01)\d{8}$/.test(phoneToUse.trim()))
       return res.status(400).json({ error: 'Enter a valid Kenyan M-Pesa number (07XXXXXXXX)' });
 
+    // ── Attempt cap: 3 failed activation attempts → wait 5 minutes ──
+    const FIVE_MIN = 5 * 60 * 1000;
+    const { data: failedAttempts, count: failedCount } = await supabase.from('transactions')
+      .select('id', { count: 'exact' })
+      .eq('user_id', user.id)
+      .eq('type', 'activation')
+      .eq('status', 'failed')
+      .gte('created_at', new Date(Date.now() - FIVE_MIN).toISOString());
+
+    if ((failedCount || failedAttempts?.length || 0) >= 3) {
+      return res.status(429).json({
+        error: 'Too many failed attempts. Please wait 5 minutes before trying again.',
+        retry_after: 300,
+      });
+    }
+
     // Prevent duplicate pending activation
     const { data: existingPending } = await supabase.from('transactions')
       .select('id, created_at, paystack_reference').eq('user_id', user.id)
@@ -278,21 +294,19 @@ router.get('/status/:reference', authenticate, async (req, res) => {
     const payStackStatus = (live?.data?.status || '').toLowerCase();
     const ageMs = Date.now() - new Date(txn.created_at).getTime();
 
-    // Still being processed (user has time to enter PIN).
-    if (['pending', 'processing', 'awaiting_confirmation'].includes(payStackStatus) && ageMs < 120 * 1000) {
-      return res.json({ status: 'pending' });
-    }
-
-    // Determine final outcome.
+    // ── Determine final outcome as fast as possible ──
     let finalStatus = 'pending';
+
     if (payStackStatus === 'success') {
       finalStatus = 'completed';
-    } else if (['abandoned', 'failed', 'cancelled', 'cancelled_by_user', 'timeout', 'unpaid'].includes(payStackStatus)) {
+    } else if (['abandoned', 'failed', 'cancelled', 'cancelled_by_user', 'timeout', 'unpaid', 'unknown_transaction', 'not_found'].includes(payStackStatus)) {
+      // User cancelled, or Paystack confirms the charge did not go through.
       finalStatus = 'failed';
-    } else if (ageMs > 120 * 1000) {
-      // No PIN entered within the window → treat as cancelled/timed out.
-      finalStatus = payStackStatus === 'success' ? 'completed' : 'failed';
+    } else if (ageMs >= 60 * 1000) {
+      // No confirmation within 60s → STK prompt expired / user did nothing.
+      finalStatus = 'failed';
     }
+    // Otherwise still pending while the user has time to enter their PIN.
 
     if (finalStatus === 'completed') {
       const mpesaCode = live?.data?.id || null;
