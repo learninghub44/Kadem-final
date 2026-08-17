@@ -13,6 +13,7 @@ const PACKAGES = [
 ];
 
 const ActivationScreen = ({ user }) => {
+  const { refreshUser } = useAuth();
   const [phone, setPhone] = useState(user?.phone || '');
   const [activating, setActivating] = useState(false);
 
@@ -25,6 +26,14 @@ const ActivationScreen = ({ user }) => {
     try {
       await api.post('/payments/activate', { phone: phone.trim() });
       toast.success('STK Push sent! Check your phone and enter your M-Pesa PIN.');
+      const poll = setInterval(async () => {
+        const updated = await refreshUser();
+        if (updated?.status === 'active') {
+          clearInterval(poll);
+          toast.success('Account activated! You can now access all features.');
+        }
+      }, 5000);
+      setTimeout(() => clearInterval(poll), 60000);
     } catch (err) {
       toast.error(err.response?.data?.error || 'Activation failed. Please try again.');
     } finally {
@@ -132,9 +141,8 @@ const ActivationScreen = ({ user }) => {
 };
 
 const DashboardHome = () => {
-  const { user, refreshUser } = useAuth();
+  const { user } = useAuth();
   const [stats, setStats] = useState(null);
-  const [activating, setActivating] = useState(false);
   const navigate = useNavigate();
 
   const isActive = user?.status === 'active';
@@ -157,26 +165,6 @@ const DashboardHome = () => {
   }, [isActive]);
 
   useEffect(() => { loadStats(); }, [loadStats]);
-
-  const handleActivate = async () => {
-    setActivating(true);
-    try {
-      await api.post('/payments/activate');
-      toast.success('STK Push sent! Check your phone and enter your M-Pesa PIN.');
-      const poll = setInterval(async () => {
-        const updated = await refreshUser();
-        if (updated?.status === 'active') {
-          clearInterval(poll);
-          toast.success('Account activated! You can now access all features.');
-        }
-      }, 5000);
-      setTimeout(() => clearInterval(poll), 60000);
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'Activation failed. Please try again.');
-    } finally {
-      setActivating(false);
-    }
-  };
 
   if (!isActive) {
     return <ActivationScreen user={user} />;
