@@ -66,7 +66,7 @@ CREATE TABLE transactions (
   amount NUMERIC(10, 2) NOT NULL,
   status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'completed', 'failed')),
   mpesa_code TEXT,
-  payhero_reference TEXT,
+  paystack_reference TEXT,
   description TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -79,6 +79,7 @@ CREATE TABLE withdrawals (
   phone TEXT NOT NULL,
   status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'paid')),
   admin_note TEXT,
+  paystack_reference TEXT,
   requested_at TIMESTAMPTZ DEFAULT NOW(),
   processed_at TIMESTAMPTZ
 );

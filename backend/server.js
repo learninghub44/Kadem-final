@@ -7,7 +7,7 @@ const hpp = require('hpp');
 
 // ── Startup env validation ────────────────────────────────────
 const required = ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'JWT_SECRET',
-  'PAYHERO_BASIC_AUTH', 'PAYHERO_CHANNEL_ID', 'PAYHERO_CALLBACK_URL'];
+  'PAYSTACK_SECRET_KEY'];
 const missing = required.filter(k => !process.env[k]);
 if (missing.length) {
   console.error('FATAL: Missing env vars:', missing.join(', '));
@@ -52,7 +52,12 @@ app.use(cors({
 }));
 
 // ── Body parsing with size limits ─────────────────────────────
-app.use(express.json({ limit: '10mb' }));
+// Captures the raw body buffer (needed to verify the Paystack webhook
+// signature, which is computed over the raw unparsed payload).
+app.use(express.json({
+  limit: '10mb',
+  verify: (req, res, buf) => { req.rawBody = buf; },
+}));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // ── HTTP Parameter Pollution protection ───────────────────────
@@ -91,7 +96,7 @@ const paymentLimiter = rateLimit({
 });
 
 const callbackLimiter = rateLimit({
-  windowMs: 60 * 1000, max: 100, // PayHero retries
+  windowMs: 60 * 1000, max: 100, // Paystack webhook retries
   standardHeaders: true, legacyHeaders: false,
 });
 
@@ -101,14 +106,14 @@ app.use('/api/payments/buy-package', paymentLimiter);
 app.use('/api/payments/deposit', paymentLimiter);
 app.use('/api/payments/callback', callbackLimiter);
 
-// ── Webhook secret verification for PayHero callback ─────────
+// ── Webhook signature verification for Paystack callback ─────
+// Paystack signs every webhook with HMAC-SHA512 of the raw body,
+// using your secret key, sent in the x-paystack-signature header.
 app.use('/api/payments/callback', (req, res, next) => {
-  // Allow if no secret configured (backwards compat)
-  const secret = process.env.PAYHERO_WEBHOOK_SECRET;
-  if (!secret) return next();
-  const incoming = req.headers['x-webhook-secret'] || req.headers['x-payhero-secret'];
-  if (incoming !== secret) {
-    console.warn('[Webhook] Invalid secret from:', req.ip);
+  const { verifyWebhookSignature } = require('./paystack');
+  const signature = req.headers['x-paystack-signature'];
+  if (!signature || !req.rawBody || !verifyWebhookSignature(req.rawBody, signature)) {
+    console.warn('[Webhook] Invalid Paystack signature from:', req.ip);
     return res.status(403).json({ error: 'Forbidden' });
   }
   next();

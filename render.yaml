@@ -14,15 +14,9 @@ services:
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
-      - key: PAYHERO_API_URL
-        value: https://backend.payhero.co.ke/api/v2
-      - key: PAYHERO_USERNAME
+      - key: PAYSTACK_SECRET_KEY
         sync: false
-      - key: PAYHERO_PASSWORD
-        sync: false
-      - key: PAYHERO_CHANNEL_ID
-        sync: false
-      - key: PAYHERO_CALLBACK_URL
+      - key: PAYSTACK_PUBLIC_KEY
         sync: false
       - key: FRONTEND_URL
         sync: false

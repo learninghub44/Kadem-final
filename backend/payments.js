@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const router = express.Router();
 const supabase = require('./supabase');
-const { initiateSTKPush } = require('./payhero');
+const { initiateSTKPush } = require('./paystack');
 const { authenticate, requireActive, requireAdmin } = require('./auth');
 
 const PACKAGES = {
@@ -33,10 +33,10 @@ router.post('/activate', authenticate, async (req, res) => {
     }
 
     const reference = `ACT-${user.id.slice(0, 8)}-${Date.now()}`;
-    await initiateSTKPush(user.phone, ACTIVATION_FEE, reference, `${user.full_name} Activation`);
+    await initiateSTKPush(user.phone, ACTIVATION_FEE, reference, `${user.full_name} Activation`, user.email);
     await supabase.from('transactions').insert({
       user_id: user.id, type: 'activation', amount: ACTIVATION_FEE,
-      status: 'pending', payhero_reference: reference,
+      status: 'pending', paystack_reference: reference,
       description: 'Account activation fee',
     });
     res.json({ message: 'STK push sent. Enter your M-Pesa PIN within 30 seconds.', reference });
@@ -55,10 +55,10 @@ router.post('/buy-package', authenticate, requireActive, async (req, res) => {
 
     const user = req.user;
     const reference = `PKG-${user.id.slice(0, 8)}-${Date.now()}`;
-    await initiateSTKPush(user.phone, pkg.price, reference, `${package_name} Package`);
+    await initiateSTKPush(user.phone, pkg.price, reference, `${package_name} Package`, user.email);
     await supabase.from('transactions').insert({
       user_id: user.id, type: 'package', amount: pkg.price,
-      status: 'pending', payhero_reference: reference,
+      status: 'pending', paystack_reference: reference,
       description: `${package_name} package`,
     });
     res.json({ message: 'STK push sent. Enter your M-Pesa PIN.', reference });
@@ -77,10 +77,10 @@ router.post('/deposit', authenticate, requireActive, async (req, res) => {
 
     const user = req.user;
     const reference = `DEP-${user.id.slice(0, 8)}-${Date.now()}`;
-    await initiateSTKPush(user.phone, amt, reference, 'Wallet Deposit');
+    await initiateSTKPush(user.phone, amt, reference, 'Wallet Deposit', user.email);
     await supabase.from('transactions').insert({
       user_id: user.id, type: 'deposit', amount: amt,
-      status: 'pending', payhero_reference: reference,
+      status: 'pending', paystack_reference: reference,
       description: 'Wallet deposit',
     });
     res.json({ message: 'STK push sent. Enter your M-Pesa PIN.', reference });
@@ -149,31 +149,33 @@ router.post('/withdraw-request', authenticate, requireActive, async (req, res) =
   }
 });
 
-// ── POST /api/payments/callback — PayHero Webhook ────────────
+// ── POST /api/payments/callback — Paystack Webhook ────────────
 // NOTE: Withdrawals are NOT processed here — admin handles them manually.
+// Signature is verified upstream in server.js before this handler runs.
 router.post('/callback', async (req, res) => {
   try {
-    console.log('[PayHero Callback] Received:', JSON.stringify(req.body));
+    console.log('[Paystack Callback] Received:', JSON.stringify(req.body));
 
-    const {
-      external_reference,
-      status, Status,
-      MpesaReceiptNumber, mpesa_receipt_number,
-      amount, Amount,
-    } = req.body;
+    const event = req.body.event;
+    const data = req.body.data || {};
 
-    const ref = external_reference;
-    const payStatus = (status || Status || '').toUpperCase();
-    const mpesaCode = MpesaReceiptNumber || mpesa_receipt_number || null;
-    const paidAmount = Number(amount || Amount || 0);
+    // Only act on successful charge events; ack everything else quietly.
+    if (event !== 'charge.success') {
+      return res.status(200).json({ message: 'OK' });
+    }
+
+    const ref = data.reference;
+    const payStatus = (data.status || '').toUpperCase();
+    const mpesaCode = data.id || data.reference || null;
+    const paidAmount = Number(data.amount || 0) / 100; // Paystack sends amount in cents
 
     if (!ref) {
-      console.warn('[Callback] Missing external_reference');
+      console.warn('[Callback] Missing reference');
       return res.status(200).json({ message: 'OK' });
     }
 
     const { data: txn } = await supabase.from('transactions')
-      .select('*').eq('payhero_reference', ref).maybeSingle();
+      .select('*').eq('paystack_reference', ref).maybeSingle();
 
     if (!txn) {
       console.warn('[Callback] No transaction found for ref:', ref);
@@ -191,7 +193,7 @@ router.post('/callback', async (req, res) => {
     await supabase.from('transactions').update({
       status: isSuccess ? 'completed' : 'failed',
       mpesa_code: mpesaCode,
-    }).eq('payhero_reference', ref);
+    }).eq('paystack_reference', ref);
 
     if (!isSuccess) {
       console.log('[Callback] Payment failed. Ref:', ref, 'Status:', payStatus);
@@ -278,10 +280,8 @@ async function grantReferralBonus(user, event, pkg_name = null) {
 // ── GET /api/payments/test — Admin config check ───────────────
 router.get('/test', authenticate, requireAdmin, (req, res) => {
   res.json({
-    payhero_channel_id: process.env.PAYHERO_CHANNEL_ID,
-    payhero_callback_url: process.env.PAYHERO_CALLBACK_URL,
-    auth_configured: !!process.env.PAYHERO_BASIC_AUTH,
-    auth_prefix: process.env.PAYHERO_BASIC_AUTH?.slice(0, 8) + '...',
+    paystack_configured: !!process.env.PAYSTACK_SECRET_KEY,
+    secret_key_prefix: process.env.PAYSTACK_SECRET_KEY?.slice(0, 7) + '...',
   });
 });
 
