@@ -55,12 +55,29 @@ const initiateSTKPush = async (phone, amount, reference, description = 'Kadem Pa
   console.log('[Paystack] Charge payload:', JSON.stringify(payload));
 
   try {
-    const { data } = await client.post('/charge', payload);
+    const response = await client.post('/charge', payload);
+    const data = response.data;
     console.log('[Paystack] Charge response:', JSON.stringify(data));
     return data;
   } catch (err) {
-    const msg = extractError(err);
-    console.error('[Paystack] Charge FAILED:', msg);
+    const data = err.response?.data;
+    const msg = data?.message || data?.error || err.message;
+
+    // Paystack returns "Charge attempted" as a 400 error for M-Pesa STK push,
+    // but it's actually a SUCCESS — the STK prompt was sent to the customer's phone.
+    // The response data contains status: "pay_offline" and display_text.
+    if (msg === 'Charge attempted' && data?.data?.status === 'pay_offline') {
+      console.log('[Paystack] STK push sent successfully (charge attempted status)');
+      return data;
+    }
+
+    // Also handle if data.status is true but HTTP status was non-2xx
+    if (data?.status === true && msg === 'Charge attempted') {
+      console.log('[Paystack] STK push sent successfully (status true)');
+      return data;
+    }
+
+    console.error('[Paystack] Charge FAILED:', JSON.stringify(data || err.message));
     throw new Error(`Paystack: ${msg}`);
   }
 };

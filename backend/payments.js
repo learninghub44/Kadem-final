@@ -68,7 +68,7 @@ router.post('/activate', authenticate, async (req, res) => {
     if (msg.includes('Invalid') && msg.includes('key')) {
       return res.status(502).json({ error: 'Payment system configuration error. Please contact support.' });
     }
-    res.status(502).json({ error: 'Payment initiation failed. Please try again.' });
+    res.status(502).json({ error: `Payment initiation failed: ${msg}` });
   }
 });
 
@@ -108,7 +108,7 @@ router.post('/buy-package', authenticate, requireActive, async (req, res) => {
     if (msg.includes('Invalid') && msg.includes('key')) {
       return res.status(502).json({ error: 'Payment system configuration error. Please contact support.' });
     }
-    res.status(502).json({ error: 'Payment initiation failed. Please try again.' });
+    res.status(502).json({ error: `Payment initiation failed: ${msg}` });
   }
 });
 
@@ -148,7 +148,7 @@ router.post('/deposit', authenticate, requireActive, async (req, res) => {
     if (msg.includes('Invalid') && msg.includes('key')) {
       return res.status(502).json({ error: 'Payment system configuration error. Please contact support.' });
     }
-    res.status(502).json({ error: 'Payment initiation failed. Please try again.' });
+    res.status(502).json({ error: `Payment initiation failed: ${msg}` });
   }
 });
 
