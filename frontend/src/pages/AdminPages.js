@@ -327,9 +327,46 @@ export const AdminTasks = () => {
   const [form, setForm] = useState({ title: '', description: '', image_url: '' });
   const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
 
   const load = () => api.get('/admin/tasks').then(r => setTasks(r.data.tasks));
   useEffect(() => { load(); }, []);
+
+  const uploadImage = async (file) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please drop an image file');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Image must be under 5MB');
+      return;
+    }
+    setUploading(true);
+    try {
+      const image_base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const res = await api.post('/tasks/upload-image', { image_base64, image_mime: file.type });
+      setForm(f => ({ ...f, image_url: res.data.image_url }));
+      toast.success('Image uploaded');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Image upload failed');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    uploadImage(e.dataTransfer.files?.[0]);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -384,11 +421,47 @@ export const AdminTasks = () => {
               placeholder="Tell users what to do with this image..." />
           </div>
           <div className="form-group">
-            <label>Image URL (WhatsApp Status Image)</label>
-            <input type="url" value={form.image_url} onChange={e => setForm({ ...form, image_url: e.target.value })}
-              placeholder="https://..." />
+            <label>Task Image (WhatsApp Status Image)</label>
+            <div
+              onDragOver={e => { e.preventDefault(); setDragActive(true); }}
+              onDragLeave={e => { e.preventDefault(); setDragActive(false); }}
+              onDrop={handleDrop}
+              onClick={() => document.getElementById('task-image-input').click()}
+              style={{
+                border: `2px dashed ${dragActive ? '#4f8ef7' : '#2a3347'}`,
+                borderRadius: 10, padding: form.image_url ? 12 : 28,
+                textAlign: 'center', cursor: 'pointer',
+                background: dragActive ? 'rgba(79,142,247,0.08)' : 'transparent',
+                transition: 'all 0.15s',
+              }}
+            >
+              <input
+                id="task-image-input" type="file" accept="image/*" style={{ display: 'none' }}
+                onChange={e => uploadImage(e.target.files?.[0])}
+              />
+              {uploading ? (
+                <p style={{ color: '#94a3b8', margin: 0 }}>Uploading...</p>
+              ) : form.image_url ? (
+                <>
+                  <img src={form.image_url} alt="Preview" style={{ width: '100%', maxHeight: 180, objectFit: 'cover', borderRadius: 8, display: 'block' }} />
+                  <p style={{ marginTop: 8, marginBottom: 0, fontSize: '0.8rem', color: '#64748b' }}>
+                    Drag a new image here or click to replace
+                  </p>
+                </>
+              ) : (
+                <p style={{ margin: 0, color: '#94a3b8', fontSize: '0.88rem' }}>
+                  Drag & drop an image here, or click to browse
+                </p>
+              )}
+            </div>
             {form.image_url && (
-              <img src={form.image_url} alt="Preview" style={{ marginTop: 10, width: '100%', maxHeight: 180, objectFit: 'cover', borderRadius: 8 }} />
+              <button
+                type="button"
+                onClick={e => { e.stopPropagation(); setForm(f => ({ ...f, image_url: '' })); }}
+                style={{ marginTop: 8, background: 'none', border: 'none', color: '#ef4444', fontSize: '0.8rem', cursor: 'pointer', padding: 0 }}
+              >
+                Remove image
+              </button>
             )}
           </div>
           <div style={{ display: 'flex', gap: 10 }}>
