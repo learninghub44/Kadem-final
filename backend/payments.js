@@ -331,17 +331,22 @@ router.post('/verify/:reference', authenticate, async (req, res) => {
     const mpesaCode = live?.data?.id || null;
     const paidAmount = Number(live?.data?.amount || 0) / 100;
 
+    // Classify *why* it didn't succeed so the UI can show the right
+    // message instead of one generic "failed" for every outcome.
+    let reason = null;
     let finalStatus = 'pending';
 
     if (payStatus === 'success') {
       finalStatus = 'completed';
-    } else if (['abandoned', 'failed', 'cancelled', 'cancelled_by_user', 'timeout', 'unpaid', 'unknown_transaction', 'not_found'].includes(payStatus)) {
-      finalStatus = 'failed';
+    } else if (['cancelled', 'cancelled_by_user'].includes(payStatus)) {
+      finalStatus = 'failed'; reason = 'cancelled';
+    } else if (['timeout', 'unpaid'].includes(payStatus)) {
+      finalStatus = 'failed'; reason = 'timeout';
+    } else if (['abandoned', 'failed', 'unknown_transaction', 'not_found'].includes(payStatus)) {
+      finalStatus = 'failed'; reason = 'failed';
     } else {
       const ageMs = Date.now() - new Date(txn.created_at).getTime();
-      if (ageMs >= 90 * 1000) {
-        finalStatus = 'failed';
-      }
+      if (ageMs >= 90 * 1000) { finalStatus = 'failed'; reason = 'timeout'; } // still pending after 90s — assume PIN never entered
     }
 
     if (finalStatus === 'pending') {
@@ -366,11 +371,16 @@ router.post('/verify/:reference', authenticate, async (req, res) => {
       await applyPaymentEffects(txn, mpesaCode, paidAmount);
     }
 
+    const messages = {
+      cancelled: 'You cancelled the M-Pesa prompt.',
+      timeout: "You didn't enter your M-Pesa PIN in time.",
+      failed: 'The payment could not be completed.',
+    };
+
     return res.json({
       status: finalStatus,
-      message: finalStatus === 'completed'
-        ? 'Payment completed successfully.'
-        : 'Payment failed or was cancelled.',
+      reason,
+      message: finalStatus === 'completed' ? 'Payment completed successfully.' : (messages[reason] || messages.failed),
     });
   } catch (err) {
     console.error('[Verify] Error:', err.message);

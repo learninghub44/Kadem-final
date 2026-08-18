@@ -1,9 +1,12 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
-import { Wallet, TrendingUp, Users, Package, Lock, Smartphone } from 'lucide-react';
+import {
+  Wallet, TrendingUp, Users, Package, Lock, Smartphone,
+  Loader2, CheckCircle2, XCircle, Clock, AlertTriangle, ShieldCheck,
+} from 'lucide-react';
 
 const PACKAGES = [
   { name: 'starter', price: 100, multiplier: '1x', color: '#6366f1' },
@@ -12,11 +15,33 @@ const PACKAGES = [
   { name: 'gold', price: 2999, multiplier: '3x', color: '#f59e0b' },
 ];
 
+const WAIT_WINDOW_MS = 90 * 1000;
+
+// Visual config per phase — icon, colors, headline, body copy
+const PHASE_META = {
+  idle: { icon: Lock, tone: '#f59e0b', title: 'Activate Your Account', body: 'Pay a one-time fee to unlock all features.' },
+  sending: { icon: Loader2, tone: '#f59e0b', title: 'Sending STK Push...', body: 'Requesting a payment prompt from M-Pesa.' },
+  waiting: { icon: Smartphone, tone: '#f59e0b', title: 'Check Your Phone', body: 'Enter your M-Pesa PIN to complete payment.' },
+  done: { icon: CheckCircle2, tone: '#22c55e', title: 'Payment Received', body: 'Unlocking your account...' },
+  cancelled: { icon: XCircle, tone: '#f87171', title: 'Payment Cancelled', body: 'You cancelled the M-Pesa prompt.' },
+  timeout: { icon: Clock, tone: '#f87171', title: 'PIN Not Entered', body: "You didn't enter your M-Pesa PIN in time." },
+  failed: { icon: AlertTriangle, tone: '#f87171', title: 'Payment Failed', body: 'The payment could not be completed.' },
+};
+
 const ActivationScreen = ({ user }) => {
   const { refreshUser, logout } = useAuth();
   const [phone, setPhone] = useState(user?.phone || '');
-  const [phase, setPhase] = useState('idle'); // idle | sending | waiting | done
-  const [notice, setNotice] = useState('');
+  const [phase, setPhase] = useState('idle');
+  const [msWaited, setMsWaited] = useState(0);
+  const timersRef = useRef({ poll: null, hardStop: null, tick: null });
+
+  const stopTimers = () => {
+    const t = timersRef.current;
+    if (t.poll) clearInterval(t.poll);
+    if (t.hardStop) clearTimeout(t.hardStop);
+    if (t.tick) clearInterval(t.tick);
+  };
+  useEffect(() => () => stopTimers(), []);
 
   const handleActivate = async () => {
     if (!phone || !/^(07|01)\d{8}$/.test(phone.trim())) {
@@ -24,236 +49,194 @@ const ActivationScreen = ({ user }) => {
       return;
     }
     setPhase('sending');
-    setNotice('');
     try {
       const res = await api.post('/payments/activate', { phone: phone.trim() });
       const reference = res.data.reference;
-      toast.success('Check your phone and enter your M-Pesa PIN.');
       setPhase('waiting');
 
       const started = Date.now();
-      const POLL_MS = 5000;
-      const VERIFY_AFTER_MS = 30000;
-      const TIMEOUT_MS = 90000;
-      let poll = null;
-      let hardStop = null;
+      const POLL_MS = 4000;
+      const VERIFY_AFTER_MS = 25000;
       let verified = false;
 
-      const stopTimers = () => {
-        if (poll) clearInterval(poll);
-        if (hardStop) clearTimeout(hardStop);
-      };
+      timersRef.current.tick = setInterval(() => setMsWaited(Date.now() - started), 500);
 
-      const finish = (status, msg) => {
+      const finish = (status, reason) => {
         stopTimers();
-        if (status === 'completed') {
-          setPhase('done');
-          setNotice(msg);
-          toast.success(msg);
-        } else {
-          setPhase('idle');
-          setNotice(msg);
-          toast.error(msg);
-        }
+        const meta = status === 'completed' ? 'done' : (reason || 'failed');
+        setPhase(meta);
+        if (status === 'completed') toast.success('Payment received!');
+        else toast.error(PHASE_META[meta]?.body || 'Payment did not go through.');
+        if (status === 'completed') refreshUser();
       };
 
-      poll = setInterval(async () => {
+      timersRef.current.poll = setInterval(async () => {
         const elapsed = Date.now() - started;
-        if (elapsed > TIMEOUT_MS) return;
-
+        if (elapsed > WAIT_WINDOW_MS) return;
         try {
-          // First check DB status
           const { data } = await api.get(`/payments/status/${reference}`);
+          if (data.status === 'completed') return finish('completed');
+          if (data.status === 'failed') return finish('failed', 'failed');
 
-          if (data.status === 'completed') {
-            await refreshUser();
-            finish('completed', 'Payment received! Account activated.');
-            return;
-          } else if (data.status === 'failed') {
-            finish('failed', 'Payment failed or was cancelled. Please try again.');
-            return;
-          }
-
-          // Still pending — after 30 seconds, ask backend to verify with Paystack
           if (elapsed >= VERIFY_AFTER_MS && !verified) {
             verified = true;
             try {
-              const { data: verifyData } = await api.post(`/payments/verify/${reference}`);
-              if (verifyData.status === 'completed') {
-                await refreshUser();
-                finish('completed', 'Payment received! Account activated.');
-                return;
-              } else if (verifyData.status === 'failed') {
-                finish('failed', 'Payment failed or was cancelled. Please try again.');
-                return;
-              }
-            } catch (verifyErr) {
-              console.error('[Activation] Verify failed:', verifyErr);
-            }
+              const { data: v } = await api.post(`/payments/verify/${reference}`);
+              if (v.status === 'completed') return finish('completed');
+              if (v.status === 'failed') return finish('failed', v.reason || 'failed');
+            } catch { /* transient — keep polling */ }
           }
         } catch { /* transient — keep polling */ }
       }, POLL_MS);
 
-      hardStop = setTimeout(async () => {
-        // Final attempt — verify with Paystack
+      timersRef.current.hardStop = setTimeout(async () => {
         try {
-          const { data: verifyData } = await api.post(`/payments/verify/${reference}`);
-          if (verifyData.status === 'completed') {
-            await refreshUser();
-            finish('completed', 'Payment received! Account activated.');
-          } else {
-            finish('failed', 'Payment timed out. Please try again.');
-          }
+          const { data: v } = await api.post(`/payments/verify/${reference}`);
+          if (v.status === 'completed') return finish('completed');
+          finish('failed', v.reason || 'timeout');
         } catch {
-          finish('failed', 'Payment timed out. Please try again.');
+          finish('failed', 'timeout');
         }
-      }, TIMEOUT_MS + 2000);
+      }, WAIT_WINDOW_MS + 2000);
     } catch (err) {
       setPhase('idle');
       toast.error(err.response?.data?.error || 'Activation failed. Please try again.');
     }
   };
 
-  const waiting = phase === 'sending' || phase === 'waiting';
+  const isBusy = phase === 'sending' || phase === 'waiting';
+  const isOutcome = ['cancelled', 'timeout', 'failed'].includes(phase);
+  const meta = PHASE_META[phase];
+  const Icon = meta.icon;
+  const secondsLeft = Math.max(0, Math.ceil((WAIT_WINDOW_MS - msWaited) / 1000));
+  const progressPct = phase === 'waiting' ? Math.min(100, (msWaited / WAIT_WINDOW_MS) * 100) : 0;
 
   return (
     <div style={{
-      height: '100vh',
-      height: '100dvh',
-      background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+      minHeight: '100vh', minHeight: '100dvh',
+      background: 'radial-gradient(circle at 50% 0%, #1e293b 0%, #0f172a 60%)',
       boxSizing: 'border-box',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      padding: '0 16px',
-      paddingTop: 'clamp(24px, 6vh, 48px)',
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      padding: '0 16px', paddingTop: 'clamp(24px, 6vh, 48px)', paddingBottom: 32,
       overflowY: 'auto',
     }}>
+      <style>{`@keyframes kadem-spin { to { transform: rotate(360deg); } }`}</style>
+
       <button
-        onClick={() => { logout(); }}
+        onClick={() => logout()}
         style={{
           position: 'fixed', top: 12, right: 16,
           background: 'none', border: 'none',
-          color: '#64748b', cursor: 'pointer', fontSize: '0.8rem',
-          zIndex: 10,
+          color: '#64748b', cursor: 'pointer', fontSize: '0.8rem', zIndex: 10,
         }}
       >
         Logout
       </button>
-      <div style={{
-        width: 64,
-        height: 64,
-        borderRadius: '50%',
-        background: 'rgba(245, 158, 11, 0.15)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginBottom: 14,
-      }}>
-        <Lock size={32} color="#f59e0b" />
-      </div>
 
-      <h1 style={{ color: '#f59e0b', fontSize: '1.35rem', marginBottom: 6 }}>
-        Activate Your Account
-      </h1>
-      <p style={{ color: '#94a3b8', marginBottom: 6, fontSize: '0.9rem' }}>
-        Pay a one-time fee to unlock all features.
-      </p>
       <div style={{
-        fontSize: 'clamp(1.8rem, 7vw, 2.2rem)',
-        fontWeight: 800,
-        color: '#fff',
-        margin: '14px 0',
-        fontFamily: 'Sora, sans-serif',
+        width: '100%', maxWidth: 400,
+        background: 'rgba(255,255,255,0.03)',
+        border: '1px solid rgba(255,255,255,0.08)',
+        borderRadius: 20,
+        padding: '32px 24px',
+        textAlign: 'center',
+        boxShadow: '0 20px 60px rgba(0,0,0,0.35)',
       }}>
-        KES 150
-      </div>
-
-      <div style={{ width: '100%', maxWidth: 380, marginBottom: 16 }}>
-        <label style={{ display: 'block', textAlign: 'left', color: '#94a3b8', marginBottom: 6, fontSize: '0.85rem' }}>
-          M-Pesa Phone Number
-        </label>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Smartphone size={18} color="#64748b" />
-          <input
-            type="tel"
-            value={phone}
-            onChange={e => setPhone(e.target.value)}
-            placeholder="0712345678"
-            disabled={waiting}
-            style={{
-              flex: 1,
-              minWidth: 0,
-              padding: '12px 14px',
-              borderRadius: 10,
-              border: '1px solid #334155',
-              background: '#0f172a',
-              color: '#fff',
-              fontSize: '1rem',
-              outline: 'none',
-            }}
+        <div style={{
+          width: 64, height: 64, borderRadius: '50%',
+          background: `${meta.tone}22`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          margin: '0 auto 16px',
+        }}>
+          <Icon
+            size={30}
+            color={meta.tone}
+            style={phase === 'sending' ? { animation: 'kadem-spin 1s linear infinite' } : undefined}
           />
         </div>
-      </div>
 
-      <button
-        onClick={handleActivate}
-        disabled={waiting}
-        style={{
-          width: '100%',
-          maxWidth: 380,
-          padding: '14px 0',
-          borderRadius: 12,
-          border: 'none',
-          background: waiting ? '#92400e' : '#f59e0b',
-          color: waiting ? '#fde68a' : '#000',
-          fontSize: '1rem',
-          fontWeight: 700,
-          cursor: waiting ? 'not-allowed' : 'pointer',
-          transition: 'all 0.2s',
-        }}
-      >
-          {phase === 'sending'
-            ? 'Sending STK Push...'
-            : phase === 'waiting'
-              ? 'Waiting for PIN...'
-              : phase === 'done'
-                ? 'Done'
-                : 'Pay Now'}
-        </button>
+        <h1 style={{ color: meta.tone, fontSize: '1.25rem', marginBottom: 6, fontWeight: 700 }}>
+          {meta.title}
+        </h1>
+        <p style={{ color: '#94a3b8', marginBottom: 4, fontSize: '0.9rem' }}>
+          {meta.body}
+        </p>
+
+        {phase === 'idle' && (
+          <div style={{
+            fontSize: 'clamp(1.8rem, 7vw, 2.2rem)', fontWeight: 800, color: '#fff',
+            margin: '14px 0', fontFamily: 'Sora, sans-serif',
+          }}>
+            KES 150
+          </div>
+        )}
+
+        {(phase === 'idle' || isOutcome) && (
+          <div style={{ width: '100%', margin: '18px 0 4px', textAlign: 'left' }}>
+            <label style={{ display: 'block', color: '#94a3b8', marginBottom: 6, fontSize: '0.85rem' }}>
+              M-Pesa Phone Number
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Smartphone size={18} color="#64748b" style={{ flexShrink: 0 }} />
+              <input
+                type="tel"
+                value={phone}
+                onChange={e => setPhone(e.target.value)}
+                placeholder="0712345678"
+                style={{
+                  flex: 1, minWidth: 0, padding: '12px 14px', borderRadius: 10,
+                  border: '1px solid #334155', background: '#0f172a', color: '#fff',
+                  fontSize: '1rem', outline: 'none',
+                }}
+              />
+            </div>
+          </div>
+        )}
 
         {phase === 'waiting' && (
-          <p style={{
-            color: '#fbbf24', fontSize: '0.95rem', marginTop: 18, fontWeight: 600,
-          }}>
-            Check your phone and enter your M-Pesa PIN to complete payment.
-          </p>
+          <div style={{ margin: '20px 0 4px' }}>
+            <div style={{ height: 6, borderRadius: 3, background: '#1e293b', overflow: 'hidden' }}>
+              <div style={{
+                height: '100%', width: `${progressPct}%`, background: '#f59e0b',
+                transition: 'width 0.5s linear', borderRadius: 3,
+              }} />
+            </div>
+            <p style={{ color: '#64748b', fontSize: '0.8rem', marginTop: 8 }}>
+              Waiting for confirmation — {secondsLeft}s left
+            </p>
+          </div>
         )}
+
+        <button
+          onClick={handleActivate}
+          disabled={isBusy}
+          style={{
+            width: '100%', marginTop: 18, padding: '14px 0', borderRadius: 12, border: 'none',
+            background: isBusy ? '#92400e' : (isOutcome ? '#334155' : '#f59e0b'),
+            color: isBusy ? '#fde68a' : (isOutcome ? '#fff' : '#000'),
+            fontSize: '1rem', fontWeight: 700,
+            cursor: isBusy ? 'not-allowed' : 'pointer', transition: 'all 0.2s',
+          }}
+        >
+          {phase === 'sending' ? 'Sending STK Push...'
+            : phase === 'waiting' ? 'Waiting for PIN...'
+            : phase === 'done' ? 'Done'
+            : isOutcome ? 'Try Again'
+            : 'Pay Now'}
+        </button>
 
         {phase === 'done' && (
-          <p style={{ color: '#22c55e', fontSize: '0.95rem', marginTop: 18, fontWeight: 600 }}>
-            Your payment was received. Unlocking your account...
+          <p style={{ color: '#22c55e', fontSize: '0.9rem', marginTop: 14, fontWeight: 600 }}>
+            Your payment was received. Redirecting...
           </p>
         )}
 
-        {notice && phase === 'idle' && (
-          <p style={{
-            color: '#f87171', fontSize: '0.9rem', marginTop: 18,
-            background: 'rgba(239,68,68,0.1)',
-            border: '1px solid rgba(239,68,68,0.3)',
-            borderRadius: 10,
-            padding: '10px 12px',
-          }}>
-            {notice}
+        {phase === 'idle' && (
+          <p style={{ color: '#475569', fontSize: '0.78rem', marginTop: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+            <ShieldCheck size={13} /> Secured by M-Pesa
           </p>
         )}
-
-        {phase === 'idle' && !notice && (
-          <p style={{ color: '#64748b', fontSize: '0.8rem', marginTop: 16 }}>
-            An M-Pesa prompt will be sent to the number above.
-            <br />Enter your PIN to complete payment.
-          </p>
-        )}
+      </div>
     </div>
   );
 };
