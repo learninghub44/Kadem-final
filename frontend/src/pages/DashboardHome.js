@@ -113,7 +113,7 @@ const ActivationScreen = ({ user }) => {
 
   return (
     <div style={{
-      minHeight: '100vh', minHeight: '100dvh',
+      minHeight: '100dvh',
       background: 'radial-gradient(circle at 50% 0%, #1e293b 0%, #0f172a 60%)',
       boxSizing: 'border-box',
       display: 'flex', flexDirection: 'column', alignItems: 'center',
