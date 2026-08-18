@@ -16,6 +16,46 @@ const WaBanner = () => (
   </a>
 );
 
+const WaHero = () => (
+  <a
+    href={WA_CHANNEL}
+    target="_blank"
+    rel="noreferrer"
+    style={{
+      display: 'block',
+      background: 'linear-gradient(135deg, #25D366 0%, #128C7E 100%)',
+      borderRadius: 18,
+      padding: '28px 24px',
+      marginBottom: 24,
+      textDecoration: 'none',
+      color: '#fff',
+      textAlign: 'center',
+      boxShadow: '0 8px 24px rgba(37,211,102,0.25)',
+    }}
+  >
+    <div style={{ fontSize: '2.2rem', marginBottom: 8 }}>📲</div>
+    <h2 style={{ margin: '0 0 6px', fontFamily: 'Sora', fontWeight: 800, fontSize: '1.25rem' }}>
+      Join the Kadem WhatsApp Channel
+    </h2>
+    <p style={{ margin: '0 0 16px', fontSize: '0.9rem', opacity: 0.92 }}>
+      Be the first to know when new tasks drop, and never miss a bonus
+    </p>
+    <span
+      style={{
+        display: 'inline-block',
+        background: '#fff',
+        color: '#128C7E',
+        fontWeight: 700,
+        fontSize: '0.9rem',
+        padding: '10px 28px',
+        borderRadius: 30,
+      }}
+    >
+      Join Now
+    </span>
+  </a>
+);
+
 const LockedGuard = ({ children }) => {
   const { user } = useAuth();
   if (user?.status !== 'active') return (
@@ -43,7 +83,7 @@ export const TasksPage = () => {
   return (
     <LockedGuard>
       <div className="page">
-        <WaBanner />
+        <WaHero />
         <h1 className="page-title">WhatsApp Tasks</h1>
         <p className="page-desc">Post these images as your WhatsApp status, collect views, then upload a screenshot photo to earn.</p>
         {tasks.length === 0
