@@ -9,13 +9,13 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem('kadem_token');
+    const token = localStorage.getItem('drivenwave_token');
     if (token) {
       api.get('/auth/me')
         .then(res => setUser(res.data.user))
         .catch(() => {
-          localStorage.removeItem('kadem_token');
-          localStorage.removeItem('kadem_user');
+          localStorage.removeItem('drivenwave_token');
+          localStorage.removeItem('drivenwave_user');
         })
         .finally(() => setLoading(false));
     } else {
@@ -24,14 +24,14 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const login = (token, userData) => {
-    localStorage.setItem('kadem_token', token);
-    localStorage.setItem('kadem_user', JSON.stringify(userData));
+    localStorage.setItem('drivenwave_token', token);
+    localStorage.setItem('drivenwave_user', JSON.stringify(userData));
     setUser(userData);
   };
 
   const logout = () => {
-    localStorage.removeItem('kadem_token');
-    localStorage.removeItem('kadem_user');
+    localStorage.removeItem('drivenwave_token');
+    localStorage.removeItem('drivenwave_user');
     setUser(null);
   };
 

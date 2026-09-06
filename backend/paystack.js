@@ -39,9 +39,9 @@ const extractError = (err) => {
 };
 
 // ── Charge a customer via M-Pesa STK push ──────────────────────
-const initiateSTKPush = async (phone, amount, reference, description = 'Kadem Payment', email = null) => {
+const initiateSTKPush = async (phone, amount, reference, description = 'Drivenwave Payment', email = null) => {
   const payload = {
-    email: email || `${toLocalPhone(phone)}@kadem.no-reply.com`,
+    email: email || `${toLocalPhone(phone)}@drivenwave.no-reply.com`,
     amount: toSubunit(amount),
     currency: 'KES',
     reference,
@@ -95,7 +95,7 @@ const checkTransactionStatus = async (reference) => {
 };
 
 // ── Payout to a user's M-Pesa number ───────────────────────────
-const initiateWithdrawal = async (phone, amount, reference, name = 'Kadem User') => {
+const initiateWithdrawal = async (phone, amount, reference, name = 'Drivenwave User') => {
   try {
     const { data: recipientRes } = await client.post('/transferrecipient', {
       type: 'mobile_money',
@@ -112,7 +112,7 @@ const initiateWithdrawal = async (phone, amount, reference, name = 'Kadem User')
       amount: toSubunit(amount),
       recipient: recipientCode,
       reference,
-      reason: 'Kadem Withdrawal',
+      reason: 'Drivenwave Withdrawal',
     });
     console.log('[Paystack] Transfer response:', JSON.stringify(transferRes));
     return transferRes;

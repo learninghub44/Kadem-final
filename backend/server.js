@@ -175,5 +175,5 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Kadem API running on port ${PORT} [${process.env.NODE_ENV || 'development'}]`));
+app.listen(PORT, () => console.log(`Drivenwave API running on port ${PORT} [${process.env.NODE_ENV || 'development'}]`));
 module.exports = app;

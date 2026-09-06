@@ -6,7 +6,7 @@ const api = axios.create({
 
 // Attach token to every request
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('kadem_token');
+  const token = localStorage.getItem('drivenwave_token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
@@ -16,8 +16,8 @@ api.interceptors.response.use(
   (res) => res,
   (err) => {
     if (err.response?.status === 401) {
-      localStorage.removeItem('kadem_token');
-      localStorage.removeItem('kadem_user');
+      localStorage.removeItem('drivenwave_token');
+      localStorage.removeItem('drivenwave_user');
       window.location.href = '/login';
     }
     return Promise.reject(err);

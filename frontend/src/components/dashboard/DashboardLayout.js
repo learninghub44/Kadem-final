@@ -46,7 +46,7 @@ export const DashboardLayout = () => {
       <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-header">
           <div className="logo">
-            <span className="logo-text">Kadem</span>
+            <span className="logo-text">Drivenwave</span>
             <span className="logo-sub">Marketing</span>
           </div>
           <button className="close-btn" onClick={() => setSidebarOpen(false)}><X size={20} /></button>

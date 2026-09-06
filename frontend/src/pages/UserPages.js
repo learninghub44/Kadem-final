@@ -35,7 +35,7 @@ const WaHero = () => (
   >
     <div style={{ fontSize: '2.2rem', marginBottom: 8 }}>📲</div>
     <h2 style={{ margin: '0 0 6px', fontFamily: 'Sora', fontWeight: 800, fontSize: '1.25rem' }}>
-      Join the Kadem WhatsApp Channel
+      Join the Drivenwave WhatsApp Channel
     </h2>
     <p style={{ margin: '0 0 16px', fontSize: '0.9rem', opacity: 0.92 }}>
       Be the first to know when new tasks drop, and never miss a bonus

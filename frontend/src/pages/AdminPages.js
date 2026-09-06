@@ -30,7 +30,7 @@ export const AdminLayout = () => {
       <aside className={`sidebar ${open ? 'open' : ''}`}>
         <div className="sidebar-header">
           <div className="logo">
-            <span className="logo-text">Kadem</span>
+            <span className="logo-text">Drivenwave</span>
             <span className="logo-sub" style={{ color: '#f59e0b' }}>Admin Panel</span>
           </div>
           <button className="close-btn" onClick={() => setOpen(false)}><X size={20} /></button>
@@ -413,7 +413,7 @@ export const AdminTasks = () => {
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label>Task Title *</label>
-            <input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="e.g. Post Kadem Promo #1" required />
+            <input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="e.g. Post Drivenwave Promo #1" required />
           </div>
           <div className="form-group">
             <label>Instructions / Description</label>

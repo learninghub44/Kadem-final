@@ -1,10 +1,10 @@
-# Kadem final
+# Drivenwave
 
 A software project built and maintained by Chris Odhiambo.
 
 ## Overview
 
-This repository contains the source code for **Kadem final**, a project developed and maintained by Chris Odhiambo (learninghub44). It is part of a portfolio of production and in-progress software products, several of which target the Kenyan and East African market.
+This repository contains the source code for **Drivenwave**, a project developed and maintained by Chris Odhiambo (learninghub44). It is part of a portfolio of production and in-progress software products, several of which target the Kenyan and East African market.
 
 ## Tech Stack
 

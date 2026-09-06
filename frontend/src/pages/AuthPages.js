@@ -33,7 +33,7 @@ export const AdminLoginPage = () => {
     <div className="auth-page">
       <div className="auth-card">
         <div className="auth-logo">
-          <h1>Kadem</h1>
+          <h1>Drivenwave</h1>
           <p>Admin Portal</p>
         </div>
         <h2>Admin Sign In</h2>
@@ -81,7 +81,7 @@ export const LoginPage = () => {
     <div className="auth-page">
       <div className="auth-card">
         <div className="auth-logo">
-          <h1>Kadem</h1>
+          <h1>Drivenwave</h1>
           <p>Marketing Agency</p>
         </div>
         <h2>Sign In</h2>
@@ -136,7 +136,7 @@ export const RegisterPage = () => {
         <div className="auth-card" style={{ textAlign: 'center' }}>
           <h2 style={{ color: '#22c55e', marginBottom: 8 }}>Account Created!</h2>
           <p style={{ marginBottom: 20, color: '#64748b' }}>
-            Welcome to Kadem! Join our WhatsApp channel to get the latest updates, tasks, and announcements.
+            Welcome to Drivenwave! Join our WhatsApp channel to get the latest updates, tasks, and announcements.
           </p>
           <a
             href="https://whatsapp.com/channel/0029VbD1tzELdQedEpwZ5841"
@@ -166,7 +166,7 @@ export const RegisterPage = () => {
     <div className="auth-page">
       <div className="auth-card">
         <div className="auth-logo">
-          <h1>Kadem</h1>
+          <h1>Drivenwave</h1>
           <p>Marketing Agency</p>
         </div>
         <h2>Create Account</h2>

@@ -120,7 +120,7 @@ const ActivationScreen = ({ user }) => {
       padding: '0 16px', paddingTop: 'clamp(24px, 6vh, 48px)', paddingBottom: 32,
       overflowY: 'auto',
     }}>
-      <style>{`@keyframes kadem-spin { to { transform: rotate(360deg); } }`}</style>
+      <style>{`@keyframes drivenwave-spin { to { transform: rotate(360deg); } }`}</style>
 
       <button
         onClick={() => logout()}
@@ -151,7 +151,7 @@ const ActivationScreen = ({ user }) => {
           <Icon
             size={30}
             color={meta.tone}
-            style={phase === 'sending' ? { animation: 'kadem-spin 1s linear infinite' } : undefined}
+            style={phase === 'sending' ? { animation: 'drivenwave-spin 1s linear infinite' } : undefined}
           />
         </div>
 
