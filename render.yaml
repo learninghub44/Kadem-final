@@ -21,7 +21,7 @@ services:
       - key: PAYHERO_CALLBACK_URL
         sync: false
       - key: PAYHERO_WEBHOOK_SECRET
-        sync: false
+        generateValue: true
       - key: FRONTEND_URL
         sync: false
       - key: REFERRAL_REGISTRATION_BONUS

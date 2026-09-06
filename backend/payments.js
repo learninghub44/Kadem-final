@@ -399,7 +399,7 @@ async function applyPaymentEffects(txn, mpesaCode, paidAmount) {
     if (user.status !== 'active') {
       await supabase.from('users').update({ status: 'active' }).eq('id', user.id);
       invalidateUserCache(user.id);
-      console.log('[Payment] User activated:');
+      console.log('[Payment] User activated:', user.email);
       if (user.referred_by) await grantReferralBonus(user, 'activation');
     }
   } else if (txn.type === 'package') {
@@ -412,11 +412,16 @@ async function applyPaymentEffects(txn, mpesaCode, paidAmount) {
       if (user.referred_by) await grantReferralBonus(user, 'package', pkg_name);
     }
   } else if (txn.type === 'deposit') {
-    // Atomic increment — no read-modify-write race
-    const credit = paidAmount || Number(txn.amount);
+    // Always credit the amount WE requested when the STK push was
+    // initiated (txn.amount) — never a webhook-supplied figure. A
+    // webhook payload is external input; trusting its claimed Amount
+    // for a monetary credit is a tampering vector even with the
+    // callback secret in place. paidAmount is kept only for logging.
+    const credit = Number(txn.amount);
     await supabase.rpc('increment_wallet', { user_id: txn.user_id, amount: credit });
     invalidateUserCache(txn.user_id);
-    console.log('[Payment] Deposit credited:', user.email, 'KES', credit);
+    console.log('[Payment] Deposit credited:', user.email, 'KES', credit,
+      paidAmount && paidAmount !== credit ? `(webhook reported ${paidAmount} — ignored)` : '');
   }
   return true;
 }

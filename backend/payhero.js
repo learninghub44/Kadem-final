@@ -1,8 +1,17 @@
 const axios = require('axios');
 
 const PAYHERO_BASE = 'https://backend.payhero.co.ke/api/v2';
-const CALLBACK_URL = process.env.PAYHERO_CALLBACK_URL;
 const CHANNEL_ID = parseInt(process.env.PAYHERO_CHANNEL_ID);
+
+// PayHero does not support custom headers or HMAC signatures on its webhook —
+// it simply POSTs to whatever callback_url you registered for that request.
+// So the only reliable way to authenticate the callback is to embed a secret
+// in the URL itself and check it on arrival (see server.js).
+const WEBHOOK_SECRET = process.env.PAYHERO_WEBHOOK_SECRET;
+const BASE_CALLBACK_URL = process.env.PAYHERO_CALLBACK_URL;
+const CALLBACK_URL = WEBHOOK_SECRET
+  ? `${BASE_CALLBACK_URL}${BASE_CALLBACK_URL.includes('?') ? '&' : '?'}secret=${encodeURIComponent(WEBHOOK_SECRET)}`
+  : BASE_CALLBACK_URL;
 
 // Strip any accidental "Basic " prefix then re-add it cleanly
 const rawAuth = (process.env.PAYHERO_BASIC_AUTH || '').replace(/^Basic\s+/i, '').trim();
@@ -24,6 +33,25 @@ const normalizePhone = (phone) => {
   return p;
 };
 
+// ── Network detection for M-Pesa vs Airtel Money ────────────────
+// PayHero's /withdraw endpoint requires the correct network_code per
+// carrier (63902 = M-Pesa, 63903 = Airtel Money). Kenyan number
+// portability means prefix-based detection is best-effort, not
+// authoritative — a ported number can defeat this — but it covers the
+// overwhelming majority of un-ported SIMs correctly. Unknown prefixes
+// fall back to M-Pesa since that's this app's primary/expected network.
+const MPESA_NETWORK_CODE = '63902';
+const AIRTEL_NETWORK_CODE = '63903';
+const AIRTEL_PREFIXES = ['0730', '0731', '0732', '0733', '0734', '0735', '0736', '0737', '0738', '0739',
+  '0750', '0751', '0752', '0753', '0754', '0755', '0756', '0785', '0786', '0787', '0788', '0789',
+  '0100', '0101', '0102'];
+
+const detectNetworkCode = (phone) => {
+  let p = phone.replace(/\s+/g, '').replace(/^\+?254/, '0');
+  const prefix4 = p.slice(0, 4);
+  return AIRTEL_PREFIXES.includes(prefix4) ? AIRTEL_NETWORK_CODE : MPESA_NETWORK_CODE;
+};
+
 const initiateSTKPush = async (phone, amount, reference, description = 'Drivenwave Payment') => {
   const payload = {
     amount: Math.round(Number(amount)),
@@ -36,7 +64,6 @@ const initiateSTKPush = async (phone, amount, reference, description = 'Drivenwa
   };
 
   console.log('[PayHero] STK Push payload:', JSON.stringify(payload));
-  console.log('[PayHero] Auth header prefix:', AUTH_HEADER.slice(0, 20) + '...');
 
   try {
     const { data } = await client.post('/payments', payload);
@@ -58,15 +85,12 @@ const checkTransactionStatus = async (reference) => {
   return data;
 };
 
-// M-Pesa network code for PayHero's mobile withdraw endpoint (63903 = Airtel Money)
-const MPESA_NETWORK_CODE = '63902';
-
 const initiateWithdrawal = async (phone, amount, reference) => {
   const payload = {
     external_reference: reference,
     amount: Math.round(Number(amount)),
     phone_number: normalizePhone(phone),
-    network_code: MPESA_NETWORK_CODE,
+    network_code: detectNetworkCode(phone),
     callback_url: CALLBACK_URL,
     channel: 'mobile',
     channel_id: CHANNEL_ID,

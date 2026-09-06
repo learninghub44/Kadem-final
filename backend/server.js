@@ -7,7 +7,8 @@ const hpp = require('hpp');
 
 // ── Startup env validation ────────────────────────────────────
 const required = ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'JWT_SECRET',
-  'PAYHERO_BASIC_AUTH', 'PAYHERO_CHANNEL_ID', 'PAYHERO_CALLBACK_URL'];
+  'PAYHERO_BASIC_AUTH', 'PAYHERO_CHANNEL_ID', 'PAYHERO_CALLBACK_URL',
+  'PAYHERO_WEBHOOK_SECRET'];
 const missing = required.filter(k => !process.env[k]);
 if (missing.length) {
   console.error('FATAL: Missing env vars:', missing.join(', '));
@@ -137,13 +138,15 @@ app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
 
 // ── Webhook secret verification for PayHero callback ─────────
+// PayHero cannot send custom headers or signatures on its callback — it
+// just POSTs to the exact callback_url you registered. payhero.js embeds
+// PAYHERO_WEBHOOK_SECRET as a ?secret= query param on that URL, so we
+// check it here. Fails closed: if the secret isn't configured, or
+// doesn't match, the callback is rejected rather than trusted blindly.
 app.use('/api/payments/callback', (req, res, next) => {
-  // Allow if no secret configured (backwards compat)
   const secret = process.env.PAYHERO_WEBHOOK_SECRET;
-  if (!secret) return next();
-  const incoming = req.headers['x-webhook-secret'] || req.headers['x-payhero-secret'];
-  if (incoming !== secret) {
-    console.warn('[Webhook] Invalid secret from:', req.ip);
+  if (!secret || req.query.secret !== secret) {
+    console.warn('[Webhook] Invalid or missing secret from:', req.ip);
     return res.status(403).json({ error: 'Forbidden' });
   }
   next();
