@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const supabase = require('./supabase');
 const { authenticate, requireAdmin, invalidateUserCache } = require('./auth');
-const { initiateWithdrawal } = require('./paystack');
+const { initiateWithdrawal } = require('./payhero');
 
 router.use(authenticate, requireAdmin);
 
@@ -195,24 +195,24 @@ router.patch('/withdrawals/:id', async (req, res) => {
       // Admin manually sends M-Pesa — then marks as paid here
       const reference = `WD-${id.slice(0, 8)}-${Date.now()}`;
       try {
-        await initiateWithdrawal(withdrawal.phone, withdrawal.amount, reference, withdrawal.users?.full_name);
+        await initiateWithdrawal(withdrawal.phone, withdrawal.amount, reference);
       } catch (payErr) {
-        console.error('[Admin Withdrawal] Paystack error:', payErr.message);
+        console.error('[Admin Withdrawal] PayHero error:', payErr.message);
         // Still allow admin to mark as paid manually if payout was done outside system
         // Return error so admin knows
         return res.status(502).json({
-          error: 'M-Pesa payout via Paystack failed: ' + payErr.message,
+          error: 'M-Pesa payout via PayHero failed: ' + payErr.message,
           hint: 'If you sent M-Pesa manually, use the "Mark Paid Manually" option instead.'
         });
       }
       await supabase.from('withdrawals').update({
         status: 'paid', admin_note: admin_note || null,
         processed_at: new Date().toISOString(),
-        paystack_reference: reference,
+        payhero_reference: reference,
       }).eq('id', id);
       await supabase.from('transactions').update({ status: 'completed' })
         .eq('user_id', withdrawal.user_id).eq('type', 'withdrawal').eq('status', 'pending');
-      res.json({ message: 'Withdrawal approved — M-Pesa payout sent via Paystack' });
+      res.json({ message: 'Withdrawal approved — M-Pesa payout sent via PayHero' });
     } else if (action === 'mark_paid') {
       // Admin sent M-Pesa manually outside system
       await supabase.from('withdrawals').update({

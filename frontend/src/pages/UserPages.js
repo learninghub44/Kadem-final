@@ -300,7 +300,7 @@ export const DepositPage = () => {
             setWaiting(false);
             return;
           }
-          // After 30s, verify with Paystack
+          // After 30s, verify with PayHero
           if (elapsed >= VERIFY_AFTER_MS && !verified) {
             verified = true;
             try {
@@ -461,7 +461,7 @@ export const PackagesPage = () => {
             setWaiting(false);
             return;
           }
-          // After 30s, verify with Paystack
+          // After 30s, verify with PayHero
           if (elapsed >= VERIFY_AFTER_MS && !verified) {
             verified = true;
             try {

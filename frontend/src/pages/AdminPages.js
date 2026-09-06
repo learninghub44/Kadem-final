@@ -662,7 +662,7 @@ export const AdminPayments = () => {
         await api.patch(`/admin/users/${txn.user_id}`, { status: 'active' });
       }
       if (txn.type === 'package') {
-        const parts = txn.paystack_reference?.split('-');
+        const parts = txn.payhero_reference?.split('-');
         const pkg = parts?.[1]?.toLowerCase();
         if (pkg && ['starter','bronze','silver','gold'].includes(pkg)) {
           await api.patch(`/admin/users/${txn.user_id}`, { package_level: pkg });
@@ -774,7 +774,7 @@ export const AdminWithdrawals = () => {
       }
       await api.patch(`/admin/withdrawals/${id}`, { action, admin_note });
       const msgs = {
-        approve: 'M-Pesa payout sent via Paystack!',
+        approve: 'M-Pesa payout sent via PayHero!',
         mark_paid: 'Marked as paid manually',
         reject: 'Rejected — amount refunded to user wallet',
       };
@@ -842,7 +842,7 @@ export const AdminWithdrawals = () => {
                   <td className="action-btns">
                     {w.status === 'pending' ? (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                        <button className="btn-sm green" onClick={() => handleWithdrawal(w.id, 'approve')} disabled={!!processing} title="Auto-pay via Paystack">
+                        <button className="btn-sm green" onClick={() => handleWithdrawal(w.id, 'approve')} disabled={!!processing} title="Auto-pay via PayHero">
                           {processing === w.id ? '...' : 'Pay via M-Pesa'}
                         </button>
                         <button className="btn-sm" style={{ borderColor: '#3b82f6', color: '#3b82f6' }} onClick={() => handleWithdrawal(w.id, 'mark_paid')} disabled={!!processing} title="You sent M-Pesa manually">
