@@ -54,19 +54,23 @@ const initiateSTKPush = async (phone, amount, reference, description = 'Drivenwa
 };
 
 const checkTransactionStatus = async (reference) => {
-  const { data } = await client.get(`/transaction-status?reference=${reference}`);
+  const { data } = await client.get(`/transaction-status?reference=${encodeURIComponent(reference)}`);
   return data;
 };
 
+// M-Pesa network code for PayHero's mobile withdraw endpoint (63903 = Airtel Money)
+const MPESA_NETWORK_CODE = '63902';
+
 const initiateWithdrawal = async (phone, amount, reference) => {
   const payload = {
+    external_reference: reference,
     amount: Math.round(Number(amount)),
     phone_number: normalizePhone(phone),
-    channel_id: CHANNEL_ID,
-    provider: 'm-pesa',
-    external_reference: reference,
+    network_code: MPESA_NETWORK_CODE,
     callback_url: CALLBACK_URL,
-    customer_name: 'Drivenwave Withdrawal',
+    channel: 'mobile',
+    channel_id: CHANNEL_ID,
+    payment_service: 'b2c',
   };
 
   console.log('[PayHero] Withdrawal payload:', JSON.stringify(payload));
