@@ -65,7 +65,12 @@ router.patch('/profile', async (req, res) => {
     const { full_name, phone } = req.body;
     const updates = {};
     if (full_name) updates.full_name = full_name;
-    if (phone) updates.phone = phone;
+    if (phone) {
+      const cleanPhone = String(phone).trim();
+      if (!/^(07|01)\d{8}$/.test(cleanPhone))
+        return res.status(400).json({ error: 'Enter a valid Kenyan phone number e.g. 0712345678' });
+      updates.phone = cleanPhone;
+    }
 
     const { data, error } = await supabase
       .from('users')

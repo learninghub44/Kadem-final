@@ -26,11 +26,17 @@ const client = axios.create({
   timeout: 30000,
 });
 
+// Returns 2547XXXXXXXX / 2541XXXXXXXX (12 digits) or throws. Never forwards a
+// malformed number to PayHero — previously a short/odd number (e.g. 9 digits
+// like 070159192) was blindly prefixed with 254 and rejected upstream.
 const normalizePhone = (phone) => {
-  let p = phone.replace(/\s+/g, '').replace(/^\+/, '');
-  if (p.startsWith('0')) p = '254' + p.slice(1);
-  if (!p.startsWith('254')) p = '254' + p;
-  return p;
+  let p = String(phone || '').replace(/[\s\-()]/g, '').replace(/^\+/, '');
+  if (p.startsWith('254')) p = p.slice(3);
+  else if (p.startsWith('0')) p = p.slice(1);
+  if (!/^[71]\d{8}$/.test(p)) {
+    throw new Error('Invalid Kenyan phone number. Use the format 07XXXXXXXX (update it in your Profile).');
+  }
+  return '254' + p;
 };
 
 // ── Network detection for M-Pesa vs Airtel Money ────────────────
@@ -74,7 +80,7 @@ const initiateSTKPush = async (phone, amount, reference, description = 'Drivenwa
     console.error('[PayHero] STK FAILED — status:', err.response?.status, 'body:', JSON.stringify(errData));
     // Throw a clear error with PayHero's actual message
     const msg = typeof errData === 'object'
-      ? errData.message || errData.error || errData.detail || JSON.stringify(errData)
+      ? errData.error_message || errData.message || errData.error || errData.detail || JSON.stringify(errData)
       : errData;
     throw new Error(`PayHero: ${msg}`);
   }
@@ -106,7 +112,7 @@ const initiateWithdrawal = async (phone, amount, reference) => {
     const errData = err.response?.data || err.message;
     console.error('[PayHero] Withdrawal FAILED:', JSON.stringify(errData));
     const msg = typeof errData === 'object'
-      ? errData.message || errData.error || errData.detail || JSON.stringify(errData)
+      ? errData.error_message || errData.message || errData.error || errData.detail || JSON.stringify(errData)
       : errData;
     throw new Error(`PayHero: ${msg}`);
   }
